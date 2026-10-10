@@ -187,7 +187,7 @@ const fmtRunTime=mins=>{const t=Math.round(Number(mins)*60);if(!isFinite(t)||t<=
 const fmtPace=(km,mins)=>{km=Number(km);mins=Number(mins);if(!(km>0)||!(mins>0))return '—';return mmss(mins*60/km).replace(/^0/,'')+' /km'};
 const fmtKm=km=>{km=Number(km);return (km%1?km.toFixed(2).replace(/0$/,''):String(km))+' km'};
 const runLine=s=>fmtKm(s.run.km)+' · '+fmtRunTime(s.run.mins)+' · '+fmtPace(s.run.km,s.run.mins);
-const VERSION='v4';
+const VERSION='v5';
 // A chosen date (YYYY-MM-DD) as a timestamp: now if it's today, else midday on that day. Null if invalid or in the future.
 function dateAt(key){if(!/^\d{4}-\d{2}-\d{2}$/.test(key||'')||key>todayKey())return null;if(key===todayKey())return new Date().toISOString();const d=parseKey(key);d.setHours(12,0,0,0);return d.toISOString()}
 // Only show a workout duration when it's believable; an open session finished days later would otherwise show thousands of minutes.
@@ -208,63 +208,8 @@ const S={plan:null,state:null,sessions:[],loaded:{plan:false,state:false,session
 const T={preset:90,remaining:90,endAt:null,running:false,fired:false};
 
 // ---------- persistence (on-device, works offline) ----------
-const DEFAULT_PLAN={
-  "runDays": [2, 3, 4],
-  "workouts": [
-    {
-      "id": "w-lower-1",
-      "name": "Lower 1",
-      "tag": "Squat focus",
-      "exercises": [
-        {"id": "e-squat", "name": "Back squat", "sets": 4, "reps": 5, "weight": 52.5, "perSide": false, "rest": 180, "note": "Start ~85% of your 60kg. Add 2.5kg when all 4 sets hit 5."},
-        {"id": "e-bss", "name": "Bulgarian split squat", "sets": 3, "reps": 8, "weight": 8, "perSide": true, "rest": 90, "note": "Dumbbell in each hand. Weaker leg first, match reps."},
-        {"id": "e-rdl", "name": "Romanian deadlift", "sets": 3, "reps": 8, "weight": 50, "perSide": false, "rest": 120, "note": "Bar to mid-shin, hips back, flat back."},
-        {"id": "e-sl-curl", "name": "Single-leg leg curl", "sets": 3, "reps": 10, "weight": 15, "perSide": true, "rest": 60, "note": "Seated or lying machine, one leg at a time."},
-        {"id": "e-sl-calf", "name": "Single-leg calf raise", "sets": 3, "reps": 12, "weight": 0, "perSide": true, "rest": 60, "note": "Bodyweight on a step to start. Full stretch at the bottom."},
-        {"id": "e-plank", "name": "Plank", "sets": 3, "reps": 45, "weight": 0, "perSide": false, "rest": 60, "note": "Reps = seconds held."}
-      ]
-    },
-    {
-      "id": "w-upper-1",
-      "name": "Upper 1",
-      "tag": "Bench focus",
-      "exercises": [
-        {"id": "e-bench", "name": "Bench press", "sets": 4, "reps": 5, "weight": 42.5, "perSide": false, "rest": 180, "note": "Start ~85% of your 50kg. Add 2.5kg when all 4 sets hit 5."},
-        {"id": "e-sa-row", "name": "Single-arm dumbbell row", "sets": 3, "reps": 10, "weight": 16, "perSide": true, "rest": 90, "note": "Brace on the bench. Pull to the hip, not the chest."},
-        {"id": "e-sa-press", "name": "Half-kneeling single-arm shoulder press", "sets": 3, "reps": 8, "weight": 10, "perSide": true, "rest": 90, "note": "Dumbbell. Kneel on the same-side knee as the pressing arm."},
-        {"id": "e-sa-pulldown", "name": "Single-arm lat pulldown", "sets": 3, "reps": 10, "weight": 25, "perSide": true, "rest": 60, "note": "Cable with a D-handle. Drive the elbow down to the pocket."},
-        {"id": "e-facepull", "name": "Cable face pull", "sets": 3, "reps": 15, "weight": 15, "perSide": false, "rest": 60, "note": "Rope at face height, pull apart at the end."},
-        {"id": "e-sa-curl", "name": "Single-arm dumbbell curl", "sets": 3, "reps": 10, "weight": 10, "perSide": true, "rest": 60, "note": "Strict, no swing."}
-      ]
-    },
-    {
-      "id": "w-lower-2",
-      "name": "Lower 2",
-      "tag": "Hinge & ski legs",
-      "exercises": [
-        {"id": "e-deadlift", "name": "Trap bar deadlift", "sets": 3, "reps": 5, "weight": 70, "perSide": false, "rest": 180, "note": "Use a straight bar if the trap bar is taken. Add 5kg when all sets are clean."},
-        {"id": "e-rev-lunge", "name": "Reverse lunge", "sets": 3, "reps": 8, "weight": 10, "perSide": true, "rest": 90, "note": "Dumbbells. Step back, knee kisses the floor, drive through the front heel."},
-        {"id": "e-sl-legpress", "name": "Single-leg leg press", "sets": 3, "reps": 10, "weight": 40, "perSide": true, "rest": 90, "note": "Foot mid-plate. Don't lock the knee at the top."},
-        {"id": "e-lat-stepup", "name": "Lateral step-up", "sets": 3, "reps": 10, "weight": 0, "perSide": true, "rest": 60, "note": "Knee-height box. Ski-specific — control the way down."},
-        {"id": "e-nordic", "name": "Nordic curl", "sets": 3, "reps": 6, "weight": 0, "perSide": false, "rest": 90, "note": "Or lying hamstring curl 3×10 if no anchor point."},
-        {"id": "e-copenhagen", "name": "Copenhagen plank", "sets": 3, "reps": 20, "weight": 0, "perSide": true, "rest": 60, "note": "Reps = seconds per side. Top leg on the bench."}
-      ]
-    },
-    {
-      "id": "w-upper-2",
-      "name": "Upper 2",
-      "tag": "Pull & shoulders",
-      "exercises": [
-        {"id": "e-incline-db", "name": "Incline dumbbell press", "sets": 3, "reps": 8, "weight": 16, "perSide": false, "rest": 120, "note": "Weight is per dumbbell. 30° bench."},
-        {"id": "e-chinup", "name": "Chin-up", "sets": 3, "reps": 6, "weight": 0, "perSide": false, "rest": 120, "note": "Assisted machine if needed — log the assistance as a negative weight."},
-        {"id": "e-sa-cable-row", "name": "Single-arm cable row", "sets": 3, "reps": 10, "weight": 25, "perSide": true, "rest": 60, "note": "Seated, D-handle. Let the shoulder blade move."},
-        {"id": "e-sa-lateral", "name": "Single-arm lateral raise", "sets": 3, "reps": 12, "weight": 6, "perSide": true, "rest": 60, "note": "Hold the rack with the other hand for balance."},
-        {"id": "e-sa-pushdown", "name": "Single-arm tricep pushdown", "sets": 3, "reps": 12, "weight": 10, "perSide": true, "rest": 60, "note": "Cable, D-handle, elbow pinned."},
-        {"id": "e-pallof", "name": "Pallof press", "sets": 3, "reps": 10, "weight": 10, "perSide": true, "rest": 60, "note": "Cable at chest height. Resist the twist."}
-      ]
-    }
-  ]
-};
+// New installs start with an empty plan; build one in the Plan tab (or restore a backup).
+const DEFAULT_PLAN={"runDays":[],"workouts":[]};
 const LS={plan:'nl_plan',state:'nl_state',sessions:'nl_sessions'};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){console.warn(e);toast('Could not save — storage is full or blocked')}};
@@ -379,9 +324,6 @@ function viewToday(){
   const dt=doneToday();
   let out=`<div class="stack">
     <div><div class="eyebrow">${DAYS[d.getDay()]}</div><h1>${d.getDate()} ${MONTHS[d.getMonth()]}</h1></div>`;
-  if(!workouts().length){
-    out+=`<div class="card empty"><h2>No plan loaded yet</h2><p>Your workouts will appear here once a plan is in place. Head to <b>Plan</b> to build one.</p><button class="btn primary" data-act="tab" data-v="plan">Open plan</button></div></div>`;return out;
-  }
   // This week at a glance (Strava-style); tapping opens the log in History.
   {
     const wk=weekKey(d);const list=doneSessions().filter(s=>weekKey(new Date(s.completedAt))===wk);
@@ -402,12 +344,15 @@ function viewToday(){
       <button class="btn primary block" data-act="run-save">Save run</button></div>`:''}
     </div>`;
   }
+  if(!workouts().length){
+    out+=`<div class="card empty"><h2>No plan loaded yet</h2><p>Your gym workouts will appear here once a plan is in place. Head to <b>Plan</b> to build one, or restore a backup.</p><button class="btn primary" data-act="tab" data-v="plan">Open plan</button></div></div>`;return out;
+  }
   if(dt.length){out+=`<div class="card soft"><div class="row between"><div><div class="eyebrow">Done today</div><h3>${h(dt.map(s=>s.name).join(', '))}</h3></div><span class="chip done">✓</span></div></div>`;}
   const last=w?lastDoneOf(w.id):null;
   const exCount=w.exercises.length;
   out+=`<div class="card hero stack">
     <div class="row between"><div class="eyebrow">${act?'In progress':(dt.length?'Next in the queue':'Next up')}</div>${act?`<span class="chip active">Started ${fmtTime(act.startedAt)}${act.startedAt.slice(0,10)!==todayKey()?' · '+fmtDate(act.startedAt):''}</span>`:''}</div>
-    <div><h1>${h(w.name)}</h1><div class="muted">${h(w.tag||'')}${w.tag?' · ':''}${exCount} exercises${last?' · last done '+fmtDate(last.completedAt):' · not done yet'}</div></div>
+    <div><h1>${h(w.name)}</h1><div class="muted">${h(w.tag||'')}${w.tag?' · ':''}${exCount} exercise${exCount===1?'':'s'}${last?' · last done '+fmtDate(last.completedAt):' · not done yet'}</div></div>
     ${act?`<div class="bar"><i style="width:${Math.round(100*act.order.filter(id=>act.ex[id].status==='done').length/act.order.length)}%"></i></div><div class="muted">${act.order.filter(id=>act.ex[id].status==='done').length} of ${act.order.length} exercises done</div>`:''}
     <ul style="margin:0;padding-left:18px;color:var(--muted)">${w.exercises.map(e=>`<li>${h(e.name)} <span class="num">${e.sets}×${e.reps}</span>${e.perSide?' <span class="chip">per side</span>':''}</li>`).join('')}</ul>
     <button class="btn primary block" data-act="start">${act?'Continue workout':'Start workout'}</button>
@@ -562,7 +507,7 @@ function viewPlan(){
   out+=`<div class="card stack">
     <div><div class="eyebrow">Your data</div><h3>Backup &amp; restore</h3><div class="muted" style="font-size:.9rem">Everything is saved on this phone, so the app works with no signal. ${n} session${n===1?'':'s'} logged. Take a backup now and then — it's a small file you can keep in your files or send to yourself.</div></div>
     <div class="grid2"><button class="btn primary" data-act="backup">Back up</button><label class="btn" for="import-file" style="cursor:pointer">Restore from file<input id="import-file" type="file" accept="application/json,.json" hidden></label></div>
-    <button class="btn ghost sm danger" data-act="p-reset-plan">Reset plan to the built-in one</button>
+    <button class="btn ghost sm danger" data-act="p-reset-plan">Clear the whole plan</button>
     <div class="divider"></div>
     <div class="row between"><div><div class="eyebrow">App</div><div class="offline-note">${S.online?'Online':'Offline'} · Fitness ${VERSION}</div></div><button class="btn sm" data-act="refresh" ${S.online?'':'disabled'}>${S.refreshing?'Checking…':'Check for updates'}</button></div>
   </div>`;
@@ -636,7 +581,7 @@ document.addEventListener('click',ev=>{
     // plan
     case 'p-runday':{S.plan=S.plan||{workouts:[],runDays:[]};const d=Number(v);S.plan.runDays=runDays().includes(d)?runDays().filter(x=>x!==d):runDays().concat([d]).sort();savePlan();render();break}
     case 'backup':exportBackup();break;
-    case 'p-reset-plan':if(b.dataset.sure){S.plan=clone(DEFAULT_PLAN);S.state.cursor=0;savePlan();saveState();S.edit=null;render();toast('Plan reset. Your history is untouched.')}else{b.dataset.sure='1';b.textContent='Tap again to reset the plan (history is kept)';}break;
+    case 'p-reset-plan':if(b.dataset.sure){S.plan=clone(DEFAULT_PLAN);S.state.cursor=0;savePlan();saveState();S.edit=null;render();toast('Plan cleared. Your history is untouched.')}else{b.dataset.sure='1';b.textContent='Tap again to clear every workout (history is kept)';}break;
     case 'p-add-workout':S.edit={type:'workout',wid:null};render();break;
     case 'p-edit-workout':S.edit={type:'workout',wid:v};render();break;
     case 'p-cancel':S.edit=null;render();break;
