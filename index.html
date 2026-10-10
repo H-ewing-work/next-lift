@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#f3f1ec" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Next Lift">
+<meta name="apple-mobile-web-app-title" content="Fitness">
 <meta name="description" content="Offline workout tracker: rolling queue, rest timer, weights and effort log.">
-<title>Next Lift</title>
+<title>Fitness</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
@@ -247,10 +247,10 @@ function initStore(){
 }
 function exportBackup(){
   const data={app:'next-lift',exportedAt:new Date().toISOString(),plan:S.plan,state:S.state,sessions:S.sessions};
-  const json=JSON.stringify(data,null,1);const name='next-lift-backup-'+todayKey()+'.json';
+  const json=JSON.stringify(data,null,1);const name='fitness-backup-'+todayKey()+'.json';
   const blob=new Blob([json],{type:'application/json'});
   const file=new File([blob],name,{type:'application/json'});
-  if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'Next Lift backup'}).catch(()=>downloadBlob(blob,name));return}
+  if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'Fitness backup'}).catch(()=>downloadBlob(blob,name));return}
   downloadBlob(blob,name);
 }
 function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);toast('Backup saved to your downloads')}
@@ -259,7 +259,7 @@ function importBackup(file){
     const existing=S.sessions.map(s=>s.id);const added=(d.sessions||[]).filter(s=>!existing.includes(s.id));
     S.sessions=S.sessions.concat(added);S.plan=d.plan;if(d.state)S.state=d.state;
     savePlan();saveState();saveSessions();S.edit=null;render();toast('Restored: '+added.length+' new session'+(added.length===1?'':'s')+' added')}
-    catch{toast('That file is not a Next Lift backup')}};
+    catch{toast('That file is not a Fitness backup')}};
   r.readAsText(file);
 }
 // ---------- derived ----------
@@ -476,7 +476,7 @@ function viewPlan(){
     <div><div class="eyebrow">Your data</div><h3>Backup &amp; restore</h3><div class="muted" style="font-size:.9rem">Everything is saved on this phone, so the app works with no signal. ${n} session${n===1?'':'s'} logged. Take a backup now and then — it's a small file you can keep in your files or send to yourself.</div></div>
     <div class="grid2"><button class="btn primary" data-act="backup">Back up</button><label class="btn" for="import-file" style="cursor:pointer">Restore from file<input id="import-file" type="file" accept="application/json,.json" hidden></label></div>
     <button class="btn ghost sm danger" data-act="p-reset-plan">Reset plan to the built-in one</button>
-    <div class="offline-note">${S.online?'Online':'Offline'} · Next Lift v1</div>
+    <div class="offline-note">${S.online?'Online':'Offline'} · Fitness v1</div>
   </div>`;
   out+=`</div>`;return out;
 }

@@ -1,6 +1,6 @@
-// Next Lift service worker — caches the app so it opens with no signal.
+// Fitness service worker — caches the app so it opens with no signal.
 // Bump CACHE when shipping a new version so phones pick it up.
-const CACHE = 'next-lift-v1';
+const CACHE = 'fitness-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', e => {

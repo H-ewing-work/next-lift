@@ -1,6 +1,6 @@
-# Next Lift — putting it on your phone
+# Fitness — putting it on your phone
 
-Next Lift is an offline-first web app. Once it's on a web address and you've opened it once with signal, your phone keeps a copy and it works with no connection at all. All your logs are stored on the phone.
+Fitness is an offline-first web app. Once it's on a web address and you've opened it once with signal, your phone keeps a copy and it works with no connection at all. All your logs are stored on the phone.
 
 ## 1. Host it on GitHub Pages (once, about 10 minutes)
 

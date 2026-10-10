@@ -1,6 +1,6 @@
 {
-  "name": "Next Lift",
-  "short_name": "Next Lift",
+  "name": "Fitness",
+  "short_name": "Fitness",
   "description": "Offline workout tracker: rolling queue, rest timer, weights and effort log.",
   "start_url": "./",
   "scope": "./",
