@@ -140,6 +140,22 @@ h3{font-size:1.1rem;line-height:1.15}
 .spark{display:flex;align-items:flex-end;gap:3px;height:36px}
 .spark i{flex:1;background:var(--later);border-radius:2px 2px 0 0;min-height:3px}
 .spark i:last-child{background:var(--accent)}
+/* activity log: day dots for a week, and sessions-per-week bars */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.week .d{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.72rem;color:var(--muted);font-weight:600}
+.week .dot{width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--line)}
+.week .gym .dot{background:var(--accent);border-color:transparent}
+.week .run .dot{background:var(--later);border-color:transparent}
+.week .both .dot{background:linear-gradient(135deg,var(--accent) 50%,var(--later) 50%);border-color:transparent}
+.week .today .lbl{color:var(--fg)}
+.week .today .dot{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--fg)}
+.wbars{display:flex;align-items:stretch;gap:6px;height:88px}
+.wbars .wb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.wbars .wb b{font-family:var(--display);font-size:.95rem;color:var(--fg);line-height:1;min-height:1em}
+.wbars .wb .bw{flex:1;width:100%;display:flex;align-items:flex-end}
+.wbars .wb i{display:block;width:100%;background:var(--later);border-radius:3px 3px 0 0;min-height:3px}
+.wbars .wb:last-child i{background:var(--accent)}
+.card.tap{cursor:pointer}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:20;max-width:calc(100% - 32px);text-align:center}
 .divider{height:1px;background:var(--line)}
 .empty{text-align:center;padding:32px 16px;color:var(--muted)}
@@ -171,7 +187,17 @@ const fmtRunTime=mins=>{const t=Math.round(Number(mins)*60);if(!isFinite(t)||t<=
 const fmtPace=(km,mins)=>{km=Number(km);mins=Number(mins);if(!(km>0)||!(mins>0))return '—';return mmss(mins*60/km).replace(/^0/,'')+' /km'};
 const fmtKm=km=>{km=Number(km);return (km%1?km.toFixed(2).replace(/0$/,''):String(km))+' km'};
 const runLine=s=>fmtKm(s.run.km)+' · '+fmtRunTime(s.run.mins)+' · '+fmtPace(s.run.km,s.run.mins);
-const VERSION='v2';
+const VERSION='v3';
+// Activity log: weeks run Monday to Sunday; a week is keyed by its Monday as YYYY-MM-DD.
+const parseKey=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d)};
+const weekStart=(d=new Date())=>{d=new Date(d);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d};
+const weekKey=d=>todayKey(weekStart(d));
+const dayIdx=d=>(new Date(d).getDay()+6)%7; // 0 = Monday
+function weekSummary(list){const runs=list.filter(s=>s.kind==='run');return {n:list.length,gym:list.length-runs.length,runs:runs.length,km:runs.reduce((a,s)=>a+Number((s.run&&s.run.km)||0),0)}}
+const weekLine=w=>w.n?`${w.n} session${w.n===1?'':'s'}${w.gym?' · '+w.gym+' gym':''}${w.runs?' · '+w.runs+' run'+(w.runs===1?'':'s')+(w.km?' · '+fmtKm(w.km):''):''}`:'No sessions';
+function weekLabel(k){const cur=weekStart();if(k===todayKey(cur))return 'This week';const prev=new Date(cur);prev.setDate(prev.getDate()-7);if(k===todayKey(prev))return 'Last week';const d=parseKey(k);return 'Week of '+d.getDate()+' '+MONTHS[d.getMonth()].slice(0,3)}
+function weekDots(list,isCurrent){const days=Array.from({length:7},()=>({gym:0,run:0}));list.forEach(s=>{days[dayIdx(s.completedAt)][s.kind==='run'?'run':'gym']++});const today=isCurrent?dayIdx(new Date()):-1;
+  return `<div class="week" aria-hidden="true">${days.map((x,i)=>`<div class="d ${x.gym&&x.run?'both':x.gym?'gym':x.run?'run':''}${i===today?' today':''}"><span class="dot"></span><span class="lbl">${DAYS_S[(i+1)%7]}</span></div>`).join('')}</div>`}
 
 // ---------- state ----------
 const S={plan:null,state:null,sessions:[],loaded:{plan:false,state:false,sessions:false},view:'today',openEx:null,finishOpen:false,runOpen:false,histOpen:null,edit:null,online:navigator.onLine};
@@ -352,6 +378,11 @@ function viewToday(){
   if(!workouts().length){
     out+=`<div class="card empty"><h2>No plan loaded yet</h2><p>Your workouts will appear here once a plan is in place. Head to <b>Plan</b> to build one.</p><button class="btn primary" data-act="tab" data-v="plan">Open plan</button></div></div>`;return out;
   }
+  // This week at a glance (Strava-style); tapping opens the log in History.
+  {
+    const wk=weekKey(d);const list=doneSessions().filter(s=>weekKey(new Date(s.completedAt))===wk);
+    out+=`<div class="card soft stack tap" data-act="tab" data-v="history" role="button" tabindex="0" style="gap:10px"><div class="row between"><div class="eyebrow">This week</div><span class="muted" style="font-size:.8rem">Open log ›</span></div>${weekDots(list,true)}<div class="muted" style="font-size:.9rem">${weekLine(weekSummary(list))}</div></div>`;
+  }
   // Runs can be logged any day; scheduled run days just get the reminder heading.
   {
     const runsToday=doneSessions().filter(s=>s.kind==='run'&&(s.completedAt||'').slice(0,10)===todayKey());
@@ -444,6 +475,21 @@ function viewHistory(){
   const ds=doneSessions();
   let out=`<div class="stack"><h1>History</h1>`;
   if(!ds.length){out+=`<div class="card empty">Nothing logged yet. Your completed sessions and weight progress will show here.</div></div>`;return out}
+  // activity: sessions per week for the last 8 weeks, newest on the right
+  const byWeek={};ds.forEach(s=>{const k=weekKey(new Date(s.completedAt));(byWeek[k]=byWeek[k]||[]).push(s)});
+  const weeks=[];{const m=weekStart();for(let i=7;i>=0;i--){const d=new Date(m);d.setDate(d.getDate()-7*i);weeks.push(todayKey(d))}}
+  const counts=weeks.map(k=>(byWeek[k]||[]).length);const wmx=Math.max(...counts,1);const avg=counts.reduce((a,b)=>a+b,0)/weeks.length;
+  out+=`<div class="card stack"><div class="row between"><div><div class="eyebrow">Last 8 weeks</div><b>${weekLine(weekSummary(byWeek[weeks[weeks.length-1]]||[]))} this week</b></div><span class="muted" style="font-size:.85rem;white-space:nowrap">avg ${avg%1?avg.toFixed(1):avg} / week</span></div>
+    <div class="wbars" aria-label="Sessions per week">${weeks.map((k,i)=>{const n=counts[i];const d=parseKey(k);return `<div class="wb"><b>${n||''}</b><div class="bw"><i style="height:${Math.round(100*n/wmx)}%"></i></div><span>${d.getDate()}/${d.getMonth()+1}</span></div>`}).join('')}</div></div>`;
+  // sessions grouped by week, newest first; tap a session for the detail
+  out+=`<div><div class="eyebrow" style="margin-bottom:8px">Sessions</div><div class="stack" style="gap:18px">`;
+  Object.keys(byWeek).sort().reverse().forEach(k=>{
+    const list=byWeek[k];
+    out+=`<div class="stack" style="gap:8px"><div class="row between"><b>${weekLabel(k)}</b><span class="muted" style="font-size:.85rem">${weekLine(weekSummary(list))}</span></div>${weekDots(list,k===weeks[weeks.length-1])}<div class="list">`;
+    list.forEach(s=>out+=sessionItem(s));
+    out+=`</div></div>`;
+  });
+  out+=`</div></div>`;
   // progress per exercise
   const prog={};
   ds.slice().reverse().forEach(s=>{if(s.kind==='run')return;Object.values(s.ex||{}).forEach(e=>{const ws=(e.sets||[]).filter(x=>x.done&&x.w!==''&&x.w!=null).map(x=>Number(x.w));if(!ws.length)return;(prog[e.name]=prog[e.name]||[]).push(Math.max(...ws))})});
@@ -459,15 +505,16 @@ function viewHistory(){
     const best=runs.reduce((a,s)=>{const p=Number(s.run.mins)/Number(s.run.km);return p<a.p?{p,s}:a},{p:Infinity,s:null}).s;
     out+=`<div><div class="eyebrow" style="margin-bottom:8px">Runs</div><div class="card soft row between"><div class="grow"><b>${runs.length} run${runs.length>1?'s':''} · ${fmtKm(totalKm)}</b><div class="muted" style="font-size:.85rem">Last <span class="num">${fmtPace(runs[0].run.km,runs[0].run.mins)}</span>${best&&runs.length>1?` · best <span class="num" style="color:var(--good)">${fmtPace(best.run.km,best.run.mins)}</span> over ${fmtKm(best.run.km)}`:''}</div></div><div class="spark" style="width:96px" aria-hidden="true" title="Pace, last ${paces.length} runs">${paces.map(p=>`<i style="height:${Math.max(8,Math.round(100*p/mx))}%"></i>`).join('')}</div></div></div>`;
   }
-  out+=`<div><div class="eyebrow" style="margin-bottom:8px">Sessions</div><div class="list">`;
-  ds.forEach(s=>{
+  out+=`</div>`;return out;
+}
+function sessionItem(s){
+    let out='';
     const open=S.histOpen===s.id;
     const dur=s.startedAt&&s.completedAt?Math.round((new Date(s.completedAt)-new Date(s.startedAt))/60000):null;
     out+=`<div class="ex ${open?'open':''}"><button class="ex-head" data-act="h-open" data-v="${s.id}"><span class="grow"><div style="font-weight:600">${h(s.name)}${s.kind==='run'?` · <span class="num">${runLine(s)}</span>`:''}</div><div class="muted" style="font-size:.85rem">${fmtDate(s.completedAt)} · ${fmtTime(s.completedAt)}${dur&&s.kind!=='run'?' · '+dur+' min':''}${s.feel?' · felt '+s.feel+'/10':''}</div></span>${s.kind!=='run'?`<span class="chip">${Object.values(s.ex).filter(e=>e.status==='done').length}/${s.order.length}</span>`:'<span class="chip later">Run</span>'}</button>`;
     if(open){out+=`<div class="ex-body hist">${s.kind==='run'?`<div class="row between"><div><div class="eyebrow">Distance</div><div class="sets-line">${fmtKm(s.run.km)}</div></div><div><div class="eyebrow">Time</div><div class="sets-line">${fmtRunTime(s.run.mins)}</div></div><div><div class="eyebrow">Avg pace</div><div class="sets-line">${fmtPace(s.run.km,s.run.mins)}</div></div></div>`:s.order.map(id=>{const e=s.ex[id];const sets=e.sets.filter(x=>x.done);return `<div class="row between"><div><div>${h(e.name)} ${e.status!=='done'?'<span class="chip">not done</span>':''}</div>${sets.length?`<div class="sets-line">${setsLine(sets)}</div>`:''}</div>${e.rpe?`<span class="chip done">${e.rpe}/10</span>`:''}</div>`}).join('')}${s.notes?`<div class="muted" style="font-size:.9rem">“${h(s.notes)}”</div>`:''}<button class="btn sm ghost danger" data-act="h-delete" data-v="${s.id}">Delete this entry</button></div>`}
     out+=`</div>`;
-  });
-  out+=`</div></div></div>`;return out;
+    return out;
 }
 
 function viewPlan(){

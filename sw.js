@@ -1,6 +1,6 @@
 // Fitness service worker — caches the app so it opens with no signal.
 // Bump CACHE when shipping a new version so phones pick it up.
-const CACHE = 'fitness-v3';
+const CACHE = 'fitness-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', e => {
