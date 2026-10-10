@@ -1,6 +1,6 @@
 // Fitness service worker — caches the app so it opens with no signal.
 // Bump CACHE when shipping a new version so phones pick it up.
-const CACHE = 'fitness-v2';
+const CACHE = 'fitness-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 
 self.addEventListener('install', e => {
@@ -9,6 +9,21 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+
+// "Check for updates" in the app: re-download every app file straight from the server
+// (cache: 'reload' skips the browser's HTTP cache too), then tell the page whether it worked.
+self.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'refresh') return;
+  e.waitUntil(caches.open(CACHE).then(async cache => {
+    let ok = true;
+    for (const u of SHELL) {
+      try { const res = await fetch(u, { cache: 'reload' }); if (res.ok) await cache.put(u, res); else ok = false; }
+      catch { ok = false; }
+    }
+    const clients = await self.clients.matchAll({ includeUncontrolled: true });
+    clients.forEach(c => c.postMessage({ type: 'refreshed', ok }));
+  }));
 });
 
 // App shell: serve from cache immediately, refresh the cache in the background.

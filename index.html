@@ -166,6 +166,12 @@ const fmtDate=iso=>{const d=new Date(iso);return DAYS[d.getDay()].slice(0,3)+' '
 const fmtTime=iso=>{const d=new Date(iso);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
 const mmss=s=>{s=Math.max(0,Math.round(s));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
 const fmtW=w=>(w==null||w===''||isNaN(w))?'—':(Number(w)%1?Number(w).toFixed(1):String(Number(w)))+'kg';
+// Runs: time is stored as decimal minutes (28.5 = 28:30); pace is derived, never stored.
+const fmtRunTime=mins=>{const t=Math.round(Number(mins)*60);if(!isFinite(t)||t<=0)return '—';const hh=Math.floor(t/3600),mm=Math.floor(t%3600/60),ss=t%60;return (hh?hh+':'+String(mm).padStart(2,'0'):String(mm))+':'+String(ss).padStart(2,'0')};
+const fmtPace=(km,mins)=>{km=Number(km);mins=Number(mins);if(!(km>0)||!(mins>0))return '—';return mmss(mins*60/km).replace(/^0/,'')+' /km'};
+const fmtKm=km=>{km=Number(km);return (km%1?km.toFixed(2).replace(/0$/,''):String(km))+' km'};
+const runLine=s=>fmtKm(s.run.km)+' · '+fmtRunTime(s.run.mins)+' · '+fmtPace(s.run.km,s.run.mins);
+const VERSION='v2';
 
 // ---------- state ----------
 const S={plan:null,state:null,sessions:[],loaded:{plan:false,state:false,sessions:false},view:'today',openEx:null,finishOpen:false,runOpen:false,histOpen:null,edit:null,online:navigator.onLine};
@@ -346,12 +352,17 @@ function viewToday(){
   if(!workouts().length){
     out+=`<div class="card empty"><h2>No plan loaded yet</h2><p>Your workouts will appear here once a plan is in place. Head to <b>Plan</b> to build one.</p><button class="btn primary" data-act="tab" data-v="plan">Open plan</button></div></div>`;return out;
   }
-  if(isRun){
-    const runToday=doneSessions().find(s=>s.kind==='run'&&(s.completedAt||'').slice(0,10)===todayKey());
-    out+=`<div class="card soft"><div class="row between"><div><div class="eyebrow">Travel day</div><h3>Run scheduled</h3>${runToday?`<div class="muted">Logged: ${runToday.run.km}km in ${runToday.run.mins} min · felt ${runToday.feel||'—'}/10</div>`:''}</div>
-      ${runToday?'<span class="chip done">Done</span>':`<button class="btn sm" data-act="run-toggle">${S.runOpen?'Close':'Log run'}</button>`}</div>
-      ${S.runOpen&&!runToday?`<div class="stack" style="margin-top:12px"><div class="grid2"><div class="field"><label for="run-km">Distance (km)</label><input id="run-km" type="number" step="0.1" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="run-min">Time (min)</label><input id="run-min" type="number" inputmode="numeric" placeholder="28"></div></div>
+  // Runs can be logged any day; scheduled run days just get the reminder heading.
+  {
+    const runsToday=doneSessions().filter(s=>s.kind==='run'&&(s.completedAt||'').slice(0,10)===todayKey());
+    out+=`<div class="card soft"><div class="row between"><div><div class="eyebrow">${isRun?'Run day':'Running'}</div><h3>${isRun?'Run scheduled':'Log a run'}</h3>
+      ${runsToday.map(r=>`<div class="muted">Logged: <span class="num" style="color:var(--fg)">${runLine(r)}</span>${r.feel?' · felt '+r.feel+'/10':''}</div>`).join('')}</div>
+      ${runsToday.length&&!S.runOpen?'<span class="chip done">Done</span>':''}<button class="btn sm" data-act="run-toggle">${S.runOpen?'Close':(runsToday.length?'Log another':'Log run')}</button></div>
+      ${S.runOpen?`<div class="stack" style="margin-top:12px">
+      <div class="grid3"><div class="field"><label for="run-km">Distance (km)</label><input id="run-km" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="run-min">Minutes</label><input id="run-min" type="number" min="0" inputmode="numeric" placeholder="28"></div><div class="field"><label for="run-sec">Seconds</label><input id="run-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="30"></div></div>
+      <div class="row between"><span class="eyebrow">Average pace</span><span class="num" id="run-pace" style="font-size:1.4rem">—</span></div>
       <div class="field"><label>How did it feel? 1 easy · 10 all out</label><div class="scale" id="run-scale">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-act="run-feel" data-v="${n}" class="${S.runFeel===n?'on':''}">${n}</button>`).join('')}</div></div>
+      <div class="field"><label for="run-notes">Notes</label><input id="run-notes" placeholder="Route, weather, how the legs felt"></div>
       <button class="btn primary block" data-act="run-save">Save run</button></div>`:''}
     </div>`;
   }
@@ -440,12 +451,20 @@ function viewHistory(){
   if(names.length){
     out+=`<div><div class="eyebrow" style="margin-bottom:8px">Top set by session</div><div class="list">${names.map(n=>{const v=prog[n].slice(-8);const mx=Math.max(...v,1);const first=v[0],lastv=v[v.length-1];const diff=lastv-first;return `<div class="card soft row between"><div class="grow"><b>${h(n)}</b><div class="muted" style="font-size:.85rem">${v.length} session${v.length>1?'s':''} · now <span class="num">${fmtW(lastv)}</span>${v.length>1?` · <span style="color:${diff>0?'var(--good)':diff<0?'var(--bad)':'var(--muted)'}">${diff>0?'+':''}${diff%1?diff.toFixed(1):diff}kg</span>`:''}</div></div><div class="spark" style="width:96px" aria-hidden="true">${v.map(x=>`<i style="height:${Math.max(8,Math.round(100*x/mx))}%"></i>`).join('')}</div></div>`}).join('')}</div></div>`;
   }
+  // runs: count, distance, and a pace trend (lower bar = faster)
+  const runs=ds.filter(s=>s.kind==='run'&&s.run&&Number(s.run.km)>0&&Number(s.run.mins)>0);
+  if(runs.length){
+    const totalKm=runs.reduce((a,s)=>a+Number(s.run.km),0);
+    const paces=runs.slice(0,8).reverse().map(s=>Number(s.run.mins)/Number(s.run.km));const mx=Math.max(...paces);
+    const best=runs.reduce((a,s)=>{const p=Number(s.run.mins)/Number(s.run.km);return p<a.p?{p,s}:a},{p:Infinity,s:null}).s;
+    out+=`<div><div class="eyebrow" style="margin-bottom:8px">Runs</div><div class="card soft row between"><div class="grow"><b>${runs.length} run${runs.length>1?'s':''} · ${fmtKm(totalKm)}</b><div class="muted" style="font-size:.85rem">Last <span class="num">${fmtPace(runs[0].run.km,runs[0].run.mins)}</span>${best&&runs.length>1?` · best <span class="num" style="color:var(--good)">${fmtPace(best.run.km,best.run.mins)}</span> over ${fmtKm(best.run.km)}`:''}</div></div><div class="spark" style="width:96px" aria-hidden="true" title="Pace, last ${paces.length} runs">${paces.map(p=>`<i style="height:${Math.max(8,Math.round(100*p/mx))}%"></i>`).join('')}</div></div></div>`;
+  }
   out+=`<div><div class="eyebrow" style="margin-bottom:8px">Sessions</div><div class="list">`;
   ds.forEach(s=>{
     const open=S.histOpen===s.id;
     const dur=s.startedAt&&s.completedAt?Math.round((new Date(s.completedAt)-new Date(s.startedAt))/60000):null;
-    out+=`<div class="ex ${open?'open':''}"><button class="ex-head" data-act="h-open" data-v="${s.id}"><span class="grow"><div style="font-weight:600">${h(s.name)}${s.kind==='run'?` · ${s.run.km}km / ${s.run.mins} min`:''}</div><div class="muted" style="font-size:.85rem">${fmtDate(s.completedAt)} · ${fmtTime(s.completedAt)}${dur&&s.kind!=='run'?' · '+dur+' min':''}${s.feel?' · felt '+s.feel+'/10':''}</div></span>${s.kind!=='run'?`<span class="chip">${Object.values(s.ex).filter(e=>e.status==='done').length}/${s.order.length}</span>`:'<span class="chip later">Run</span>'}</button>`;
-    if(open){out+=`<div class="ex-body hist">${s.kind==='run'?`<div class="muted">Run logged</div>`:s.order.map(id=>{const e=s.ex[id];const sets=e.sets.filter(x=>x.done);return `<div class="row between"><div><div>${h(e.name)} ${e.status!=='done'?'<span class="chip">not done</span>':''}</div>${sets.length?`<div class="sets-line">${setsLine(sets)}</div>`:''}</div>${e.rpe?`<span class="chip done">${e.rpe}/10</span>`:''}</div>`}).join('')}${s.notes?`<div class="muted" style="font-size:.9rem">“${h(s.notes)}”</div>`:''}<button class="btn sm ghost danger" data-act="h-delete" data-v="${s.id}">Delete this entry</button></div>`}
+    out+=`<div class="ex ${open?'open':''}"><button class="ex-head" data-act="h-open" data-v="${s.id}"><span class="grow"><div style="font-weight:600">${h(s.name)}${s.kind==='run'?` · <span class="num">${runLine(s)}</span>`:''}</div><div class="muted" style="font-size:.85rem">${fmtDate(s.completedAt)} · ${fmtTime(s.completedAt)}${dur&&s.kind!=='run'?' · '+dur+' min':''}${s.feel?' · felt '+s.feel+'/10':''}</div></span>${s.kind!=='run'?`<span class="chip">${Object.values(s.ex).filter(e=>e.status==='done').length}/${s.order.length}</span>`:'<span class="chip later">Run</span>'}</button>`;
+    if(open){out+=`<div class="ex-body hist">${s.kind==='run'?`<div class="row between"><div><div class="eyebrow">Distance</div><div class="sets-line">${fmtKm(s.run.km)}</div></div><div><div class="eyebrow">Time</div><div class="sets-line">${fmtRunTime(s.run.mins)}</div></div><div><div class="eyebrow">Avg pace</div><div class="sets-line">${fmtPace(s.run.km,s.run.mins)}</div></div></div>`:s.order.map(id=>{const e=s.ex[id];const sets=e.sets.filter(x=>x.done);return `<div class="row between"><div><div>${h(e.name)} ${e.status!=='done'?'<span class="chip">not done</span>':''}</div>${sets.length?`<div class="sets-line">${setsLine(sets)}</div>`:''}</div>${e.rpe?`<span class="chip done">${e.rpe}/10</span>`:''}</div>`}).join('')}${s.notes?`<div class="muted" style="font-size:.9rem">“${h(s.notes)}”</div>`:''}<button class="btn sm ghost danger" data-act="h-delete" data-v="${s.id}">Delete this entry</button></div>`}
     out+=`</div>`;
   });
   out+=`</div></div></div>`;return out;
@@ -476,7 +495,8 @@ function viewPlan(){
     <div><div class="eyebrow">Your data</div><h3>Backup &amp; restore</h3><div class="muted" style="font-size:.9rem">Everything is saved on this phone, so the app works with no signal. ${n} session${n===1?'':'s'} logged. Take a backup now and then — it's a small file you can keep in your files or send to yourself.</div></div>
     <div class="grid2"><button class="btn primary" data-act="backup">Back up</button><label class="btn" for="import-file" style="cursor:pointer">Restore from file<input id="import-file" type="file" accept="application/json,.json" hidden></label></div>
     <button class="btn ghost sm danger" data-act="p-reset-plan">Reset plan to the built-in one</button>
-    <div class="offline-note">${S.online?'Online':'Offline'} · Fitness v1</div>
+    <div class="divider"></div>
+    <div class="row between"><div><div class="eyebrow">App</div><div class="offline-note">${S.online?'Online':'Offline'} · Fitness ${VERSION}</div></div><button class="btn sm" data-act="refresh" ${S.online?'':'disabled'}>${S.refreshing?'Checking…':'Check for updates'}</button></div>
   </div>`;
   out+=`</div>`;return out;
 }
@@ -511,8 +531,11 @@ document.addEventListener('click',ev=>{
     case 'skip':skipWorkout();break;
     case 'run-toggle':S.runOpen=!S.runOpen;render();break;
     case 'run-feel':S.runFeel=Number(v);document.querySelectorAll('#run-scale button').forEach(x=>x.classList.toggle('on',Number(x.dataset.v)===S.runFeel));break;
-    case 'run-save':{const km=parseFloat($('#run-km').value),mins=parseFloat($('#run-min').value);if(isNaN(km)||isNaN(mins)){toast('Add distance and time first');return}
-      const r={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),status:'done',order:[],ex:{},feel:S.runFeel||null,notes:'',run:{km,mins}};upsertLocal(r);saveSession(r);S.runOpen=false;S.runFeel=null;render();toast('Run logged');break}
+    case 'run-save':{const km=parseFloat($('#run-km').value),m=parseFloat($('#run-min').value)||0,sec=parseFloat($('#run-sec').value)||0;const mins=m+sec/60;
+      if(!(km>0)||!(mins>0)){toast('Add distance and time first');return}
+      const r={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),status:'done',order:[],ex:{},feel:S.runFeel||null,notes:($('#run-notes').value||'').trim(),run:{km,mins:Math.round(mins*1000)/1000}};
+      upsertLocal(r);saveSession(r);S.runOpen=false;S.runFeel=null;render();toast('Run logged · '+fmtPace(km,mins));break}
+    case 'refresh':refreshApp();break;
     case 'open-ex':S.openEx=S.openEx===v?null:v;render();break;
     case 'set-done':{const e=ex(b.dataset.ex);if(!e)return;const i=Number(b.dataset.i);const st=e.sets[i];readInputs(s);st.done=!st.done;saveSession(s);if(st.done){const def=exById(b.dataset.ex);startTimer(def?def.rest:90)}render();break}
     case 'add-set':{const e=ex(v);readInputs(s);const l=e.sets[e.sets.length-1];e.sets.push({w:l?l.w:'',r:l?l.r:'',done:false});saveSession(s);render();break}
@@ -558,6 +581,10 @@ document.addEventListener('click',ev=>{
 // typed values → in-memory session, debounced save (no re-render while typing)
 function readInputs(s){if(!s)return;document.querySelectorAll('#app input[data-f]').forEach(inp=>{const e=s.ex[inp.dataset.ex];if(!e)return;const st=e.sets[Number(inp.dataset.i)];if(!st)return;st[inp.dataset.f]=inp.value===''?'':Number(inp.value)});const n=$('#notes');if(n)s.notes=n.value}
 document.addEventListener('input',ev=>{const inp=ev.target;if(!inp.matches('#app input[data-f],#app textarea[data-f]'))return;const s=activeSession();if(!s)return;readInputs(s);saveSession(s)});
+// live average pace while typing a run
+document.addEventListener('input',ev=>{if(!/^run-(km|min|sec)$/.test(ev.target.id))return;const p=$('#run-pace');if(!p)return;const km=parseFloat($('#run-km').value),mins=(parseFloat($('#run-min').value)||0)+(parseFloat($('#run-sec').value)||0)/60;p.textContent=fmtPace(km,mins)});
+// re-render without losing anything typed into an open workout
+function safeRender(){const s=activeSession();if(s)readInputs(s);render()}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){renderTimer();if(S.view==='workout')safeRender()}});
 
 document.addEventListener('change',ev=>{if(ev.target.id==='import-file'&&ev.target.files[0]){importBackup(ev.target.files[0]);ev.target.value=''}});
@@ -571,10 +598,28 @@ const _render=render;render=function(){_render();wakeLock(S.view==='workout')};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.view==='workout')wakeLock(true)});
 
 // offline support: cache the app on first load so it opens with no signal
-if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+const hasSW='serviceWorker' in navigator&&location.protocol.startsWith('http');
+if(hasSW){
   navigator.serviceWorker.register('sw.js').then(reg=>{
-    reg.addEventListener('updatefound',()=>{const nw=reg.installing;nw&&nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller)toast('Update ready — reopen the app to get it')})});
+    reg.addEventListener('updatefound',()=>{const nw=reg.installing;nw&&nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller&&!S.refreshing)toast('Update ready — reopen the app to get it')})});
   }).catch(e=>console.warn('sw',e));
+}
+// "Check for updates": fetch a new service worker if there is one, make the worker re-download the app
+// files from the server (bypassing every cache), then reload so the fresh copy is what's running.
+async function refreshApp(){
+  if(S.refreshing)return;
+  if(!navigator.onLine){toast('No signal — connect to the internet and try again');return}
+  if(!hasSW||!navigator.serviceWorker.controller){location.reload();return}
+  S.refreshing=true;render();
+  try{const reg=await navigator.serviceWorker.getRegistration();if(reg)await reg.update()}catch(e){console.warn('update',e)}
+  const refreshed=new Promise(res=>{
+    const on=e=>{if(e.data&&e.data.type==='refreshed'){navigator.serviceWorker.removeEventListener('message',on);res(e.data.ok)}};
+    navigator.serviceWorker.addEventListener('message',on);setTimeout(()=>res(null),10000);
+  });
+  const ctl=navigator.serviceWorker.controller;ctl&&ctl.postMessage({type:'refresh'});
+  const ok=await refreshed;
+  if(ok===false){S.refreshing=false;render();toast('Could not reach the server — try again later');return}
+  location.reload();
 }
 
 initStore();
