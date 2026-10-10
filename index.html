@@ -187,7 +187,11 @@ const fmtRunTime=mins=>{const t=Math.round(Number(mins)*60);if(!isFinite(t)||t<=
 const fmtPace=(km,mins)=>{km=Number(km);mins=Number(mins);if(!(km>0)||!(mins>0))return '—';return mmss(mins*60/km).replace(/^0/,'')+' /km'};
 const fmtKm=km=>{km=Number(km);return (km%1?km.toFixed(2).replace(/0$/,''):String(km))+' km'};
 const runLine=s=>fmtKm(s.run.km)+' · '+fmtRunTime(s.run.mins)+' · '+fmtPace(s.run.km,s.run.mins);
-const VERSION='v3';
+const VERSION='v4';
+// A chosen date (YYYY-MM-DD) as a timestamp: now if it's today, else midday on that day. Null if invalid or in the future.
+function dateAt(key){if(!/^\d{4}-\d{2}-\d{2}$/.test(key||'')||key>todayKey())return null;if(key===todayKey())return new Date().toISOString();const d=parseKey(key);d.setHours(12,0,0,0);return d.toISOString()}
+// Only show a workout duration when it's believable; an open session finished days later would otherwise show thousands of minutes.
+const sessionMins=s=>{if(!s.startedAt||!s.completedAt)return null;const m=Math.round((new Date(s.completedAt)-new Date(s.startedAt))/60000);return m>0&&m<360?m:null};
 // Activity log: weeks run Monday to Sunday; a week is keyed by its Monday as YYYY-MM-DD.
 const parseKey=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d)};
 const weekStart=(d=new Date())=>{d=new Date(d);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d};
@@ -390,6 +394,7 @@ function viewToday(){
       ${runsToday.map(r=>`<div class="muted">Logged: <span class="num" style="color:var(--fg)">${runLine(r)}</span>${r.feel?' · felt '+r.feel+'/10':''}</div>`).join('')}</div>
       ${runsToday.length&&!S.runOpen?'<span class="chip done">Done</span>':''}<button class="btn sm" data-act="run-toggle">${S.runOpen?'Close':(runsToday.length?'Log another':'Log run')}</button></div>
       ${S.runOpen?`<div class="stack" style="margin-top:12px">
+      <div class="field"><label for="run-date">Date</label><input id="run-date" type="date" value="${todayKey()}" max="${todayKey()}"></div>
       <div class="grid3"><div class="field"><label for="run-km">Distance (km)</label><input id="run-km" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="run-min">Minutes</label><input id="run-min" type="number" min="0" inputmode="numeric" placeholder="28"></div><div class="field"><label for="run-sec">Seconds</label><input id="run-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="30"></div></div>
       <div class="row between"><span class="eyebrow">Average pace</span><span class="num" id="run-pace" style="font-size:1.4rem">—</span></div>
       <div class="field"><label>How did it feel? 1 easy · 10 all out</label><div class="scale" id="run-scale">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-act="run-feel" data-v="${n}" class="${S.runFeel===n?'on':''}">${n}</button>`).join('')}</div></div>
@@ -420,9 +425,9 @@ function viewToday(){
 function viewWorkout(){
   const s=activeSession();if(!s)return viewToday();
   const done=s.order.filter(id=>s.ex[id].status==='done').length;
-  const mins=Math.round((Date.now()-new Date(s.startedAt))/60000);
+  const mins=Math.round((Date.now()-new Date(s.startedAt))/60000);const since=mins<720?mins+' min in':'started '+fmtDate(s.startedAt);
   let out=`<div class="stack">
-    <div class="row between"><div><div class="eyebrow">${mins} min in · ${done}/${s.order.length} done</div><h1>${h(s.name)}</h1></div><button class="btn sm" data-act="tab" data-v="today">Today</button></div>
+    <div class="row between"><div><div class="eyebrow">${since} · ${done}/${s.order.length} done</div><h1>${h(s.name)}</h1></div><button class="btn sm" data-act="tab" data-v="today">Today</button></div>
     <div class="bar"><i style="width:${Math.round(100*done/s.order.length)}%"></i></div>
     <div class="list">`;
   s.order.forEach((id,idx)=>{
@@ -473,7 +478,8 @@ function viewWorkout(){
 
 function viewHistory(){
   const ds=doneSessions();
-  let out=`<div class="stack"><h1>History</h1>`;
+  let out=`<div class="stack"><div class="row between"><h1>History</h1><button class="btn sm ${S.pastOpen?'':'primary'}" data-act="past-open">${S.pastOpen?'Close':'+ Log past session'}</button></div>`;
+  if(S.pastOpen)out+=pastForm();
   if(!ds.length){out+=`<div class="card empty">Nothing logged yet. Your completed sessions and weight progress will show here.</div></div>`;return out}
   // activity: sessions per week for the last 8 weeks, newest on the right
   const byWeek={};ds.forEach(s=>{const k=weekKey(new Date(s.completedAt));(byWeek[k]=byWeek[k]||[]).push(s)});
@@ -507,10 +513,25 @@ function viewHistory(){
   }
   out+=`</div>`;return out;
 }
+// Log a session for an earlier day: a run with distance and time, or a gym workout recorded as done
+// without set-by-set weights (so it never feeds the "last time" numbers in a live workout).
+function pastForm(){
+  const ws=workouts();const type=S.pastType||(ws[0]?ws[0].id:'run');const today=todayKey();
+  return `<div class="card soft stack">
+    <div class="grid2"><div class="field"><label for="past-date">Date</label><input id="past-date" type="date" value="${S.pastDate||today}" max="${today}"></div>
+      <div class="field"><label for="past-type">What</label><select id="past-type">${ws.map(w=>`<option value="${w.id}" ${type===w.id?'selected':''}>${h(w.name)}</option>`).join('')}<option value="run" ${type==='run'?'selected':''}>Run</option></select></div></div>
+    ${type==='run'?`<div class="grid3"><div class="field"><label for="past-km">Distance (km)</label><input id="past-km" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="past-min">Minutes</label><input id="past-min" type="number" min="0" inputmode="numeric" placeholder="28"></div><div class="field"><label for="past-sec">Seconds</label><input id="past-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="30"></div></div>
+      <div class="row between"><span class="eyebrow">Average pace</span><span class="num" id="past-pace" style="font-size:1.4rem">—</span></div>`
+      :`<div class="muted" style="font-size:.9rem">Recorded as done, without weights. It counts in your week and history but won't change the suggested weights in your next workout.</div>`}
+    <div class="field"><label>How did it feel? 1 easy · 10 all out</label><div class="scale" id="past-scale">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-act="past-feel" data-v="${n}" class="${S.pastFeel===n?'on':''}">${n}</button>`).join('')}</div></div>
+    <div class="field"><label for="past-notes">Notes</label><input id="past-notes" value="${h(S.pastNotes||'')}" placeholder="Anything worth remembering"></div>
+    <button class="btn primary block" data-act="past-save">Save to history</button>
+  </div>`;
+}
 function sessionItem(s){
     let out='';
     const open=S.histOpen===s.id;
-    const dur=s.startedAt&&s.completedAt?Math.round((new Date(s.completedAt)-new Date(s.startedAt))/60000):null;
+    const dur=sessionMins(s);
     out+=`<div class="ex ${open?'open':''}"><button class="ex-head" data-act="h-open" data-v="${s.id}"><span class="grow"><div style="font-weight:600">${h(s.name)}${s.kind==='run'?` · <span class="num">${runLine(s)}</span>`:''}</div><div class="muted" style="font-size:.85rem">${fmtDate(s.completedAt)} · ${fmtTime(s.completedAt)}${dur&&s.kind!=='run'?' · '+dur+' min':''}${s.feel?' · felt '+s.feel+'/10':''}</div></span>${s.kind!=='run'?`<span class="chip">${Object.values(s.ex).filter(e=>e.status==='done').length}/${s.order.length}</span>`:'<span class="chip later">Run</span>'}</button>`;
     if(open){out+=`<div class="ex-body hist">${s.kind==='run'?`<div class="row between"><div><div class="eyebrow">Distance</div><div class="sets-line">${fmtKm(s.run.km)}</div></div><div><div class="eyebrow">Time</div><div class="sets-line">${fmtRunTime(s.run.mins)}</div></div><div><div class="eyebrow">Avg pace</div><div class="sets-line">${fmtPace(s.run.km,s.run.mins)}</div></div></div>`:s.order.map(id=>{const e=s.ex[id];const sets=e.sets.filter(x=>x.done);return `<div class="row between"><div><div>${h(e.name)} ${e.status!=='done'?'<span class="chip">not done</span>':''}</div>${sets.length?`<div class="sets-line">${setsLine(sets)}</div>`:''}</div>${e.rpe?`<span class="chip done">${e.rpe}/10</span>`:''}</div>`}).join('')}${s.notes?`<div class="muted" style="font-size:.9rem">“${h(s.notes)}”</div>`:''}<button class="btn sm ghost danger" data-act="h-delete" data-v="${s.id}">Delete this entry</button></div>`}
     out+=`</div>`;
@@ -578,9 +599,19 @@ document.addEventListener('click',ev=>{
     case 'skip':skipWorkout();break;
     case 'run-toggle':S.runOpen=!S.runOpen;render();break;
     case 'run-feel':S.runFeel=Number(v);document.querySelectorAll('#run-scale button').forEach(x=>x.classList.toggle('on',Number(x.dataset.v)===S.runFeel));break;
+    case 'past-open':S.pastOpen=!S.pastOpen;if(!S.pastOpen){S.pastFeel=null;S.pastType=null;S.pastDate=null;S.pastNotes=''}render();break;
+    case 'past-feel':S.pastFeel=Number(v);document.querySelectorAll('#past-scale button').forEach(x=>x.classList.toggle('on',Number(x.dataset.v)===S.pastFeel));break;
+    case 'past-save':{const when=dateAt($('#past-date').value);if(!when){toast('Pick a date that isn’t in the future');return}
+      const type=$('#past-type').value,notes=($('#past-notes').value||'').trim();let s;
+      if(type==='run'){const km=parseFloat($('#past-km').value),mins=(parseFloat($('#past-min').value)||0)+(parseFloat($('#past-sec').value)||0)/60;if(!(km>0)||!(mins>0)){toast('Add distance and time first');return}
+        s={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:when,completedAt:when,status:'done',order:[],ex:{},feel:S.pastFeel||null,notes,run:{km,mins:Math.round(mins*1000)/1000}}}
+      else{const w=workouts().find(x=>x.id===type);if(!w){toast('Pick a workout');return}s=newSession(w);s.startedAt=when;s.completedAt=when;s.status='done';s.feel=S.pastFeel||null;s.notes=notes;
+        Object.values(s.ex).forEach(e=>{e.status='done';e.sets.forEach(x=>{x.done=false})})}
+      upsertLocal(s);saveSession(s);S.pastOpen=false;S.pastFeel=null;S.pastType=null;S.pastDate=null;S.pastNotes='';S.histOpen=s.id;render();toast(s.name+' logged for '+fmtDate(when));break}
     case 'run-save':{const km=parseFloat($('#run-km').value),m=parseFloat($('#run-min').value)||0,sec=parseFloat($('#run-sec').value)||0;const mins=m+sec/60;
       if(!(km>0)||!(mins>0)){toast('Add distance and time first');return}
-      const r={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),status:'done',order:[],ex:{},feel:S.runFeel||null,notes:($('#run-notes').value||'').trim(),run:{km,mins:Math.round(mins*1000)/1000}};
+      const when=dateAt($('#run-date').value);if(!when){toast('Pick a date that isn’t in the future');return}
+      const r={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:when,completedAt:when,status:'done',order:[],ex:{},feel:S.runFeel||null,notes:($('#run-notes').value||'').trim(),run:{km,mins:Math.round(mins*1000)/1000}};
       upsertLocal(r);saveSession(r);S.runOpen=false;S.runFeel=null;render();toast('Run logged · '+fmtPace(km,mins));break}
     case 'refresh':refreshApp();break;
     case 'open-ex':S.openEx=S.openEx===v?null:v;render();break;
@@ -629,7 +660,9 @@ document.addEventListener('click',ev=>{
 function readInputs(s){if(!s)return;document.querySelectorAll('#app input[data-f]').forEach(inp=>{const e=s.ex[inp.dataset.ex];if(!e)return;const st=e.sets[Number(inp.dataset.i)];if(!st)return;st[inp.dataset.f]=inp.value===''?'':Number(inp.value)});const n=$('#notes');if(n)s.notes=n.value}
 document.addEventListener('input',ev=>{const inp=ev.target;if(!inp.matches('#app input[data-f],#app textarea[data-f]'))return;const s=activeSession();if(!s)return;readInputs(s);saveSession(s)});
 // live average pace while typing a run
-document.addEventListener('input',ev=>{if(!/^run-(km|min|sec)$/.test(ev.target.id))return;const p=$('#run-pace');if(!p)return;const km=parseFloat($('#run-km').value),mins=(parseFloat($('#run-min').value)||0)+(parseFloat($('#run-sec').value)||0)/60;p.textContent=fmtPace(km,mins)});
+document.addEventListener('input',ev=>{const m=/^(run|past)-(km|min|sec)$/.exec(ev.target.id);if(!m)return;const x=m[1];const p=$('#'+x+'-pace');if(!p)return;const km=parseFloat($('#'+x+'-km').value),mins=(parseFloat($('#'+x+'-min').value)||0)+(parseFloat($('#'+x+'-sec').value)||0)/60;p.textContent=fmtPace(km,mins)});
+// switching the past-session form between a workout and a run re-renders it, keeping what's typed
+document.addEventListener('change',ev=>{if(ev.target.id!=='past-type')return;S.pastType=ev.target.value;S.pastDate=$('#past-date').value;S.pastNotes=$('#past-notes').value;render()});
 // re-render without losing anything typed into an open workout
 function safeRender(){const s=activeSession();if(s)readInputs(s);render()}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){renderTimer();if(S.view==='workout')safeRender()}});
