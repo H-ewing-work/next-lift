@@ -160,12 +160,55 @@ h3{font-size:1.1rem;line-height:1.15}
 .divider{height:1px;background:var(--line)}
 .empty{text-align:center;padding:32px 16px;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.ex,.btn,.chip{transition:background .15s,border-color .15s,opacity .15s}}
+
+/* library: list rows, chips, segmented control */
+.seg{display:flex;background:var(--surface2);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;min-height:38px;border-radius:8px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{min-height:32px;padding:4px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface2);font-size:.8rem;font-weight:600;color:var(--muted)}
+.chips button.on{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.lib-row{display:flex;align-items:center;gap:12px;padding:10px 12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.lib-row .th{width:54px;height:54px;flex:none;border-radius:10px;background:var(--bg);overflow:hidden;display:grid;place-items:center}
+.lib-row .th svg{width:100%;height:100%;display:block}
+.lib-row .th .mm{width:26px;height:52px}
+.lib-row .idx{width:24px;text-align:center;color:var(--muted);flex:none}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:.72rem;padding:2px 8px;border-radius:999px;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+.tag.k{color:var(--fg)}
+.tag.p{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.tag.s{border-color:var(--accent);color:var(--fg)}
+.info{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--muted);font-family:var(--display);font-weight:700;font-size:1rem;flex:none;border:1px solid var(--line);background:var(--surface2)}
+.ex-top{display:flex;align-items:center;padding-right:10px}
+.ex-top .ex-head{flex:1;min-width:0}
+.linkish{color:var(--accent);font-weight:600;font-size:inherit}
+a.btn{text-decoration:none;color:inherit}
+.cue{color:var(--accent);font-weight:600}
+.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+/* stick figures and muscle map */
+svg.fg{display:block;background:var(--bg);border-radius:10px;width:100%}
+.fig{stroke:var(--fg);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.hi{stroke:var(--accent);stroke-width:5}
+.floor{stroke:var(--line);stroke-width:2;fill:none}
+.wall{stroke:var(--line);stroke-width:2;stroke-dasharray:3 4}
+.head{fill:var(--fg);stroke:none}
+.m{fill:var(--line)}
+.r{fill:var(--accent);opacity:.9}
+.r2{fill:var(--accent);opacity:.4}
+.maps{display:flex;gap:20px;justify-content:center}
+.maps figure{margin:0;text-align:center;font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
+.maps svg{display:block;width:100%;background:var(--bg);border-radius:8px;margin-bottom:4px}
+/* full-screen sheet for cards and routines (sits above the app, never touches its state) */
+.sheet{position:fixed;inset:0;background:var(--bg);z-index:15;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px;padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+.sheet .inner{max-width:560px;margin:0 auto}
+.sheet-top{position:sticky;top:0;background:var(--bg);padding:calc(12px + env(safe-area-inset-top,0px)) 0 12px;display:flex;align-items:center;gap:12px;z-index:1}
 </style>
 
 <main id="app" aria-live="polite"></main>
 <div id="timerbar" class="timerbar" hidden></div>
 <nav class="tabs" aria-label="Sections"><div class="inner" id="tabs"></div></nav>
 <div id="toast" class="toast" hidden></div>
+<div id="sheet" class="sheet" hidden></div>
 
 <script>
 (function(){
@@ -187,7 +230,7 @@ const fmtRunTime=mins=>{const t=Math.round(Number(mins)*60);if(!isFinite(t)||t<=
 const fmtPace=(km,mins)=>{km=Number(km);mins=Number(mins);if(!(km>0)||!(mins>0))return '—';return mmss(mins*60/km).replace(/^0/,'')+' /km'};
 const fmtKm=km=>{km=Number(km);return (km%1?km.toFixed(2).replace(/0$/,''):String(km))+' km'};
 const runLine=s=>fmtKm(s.run.km)+' · '+fmtRunTime(s.run.mins)+' · '+fmtPace(s.run.km,s.run.mins);
-const VERSION='v5';
+const VERSION='v6';
 // A chosen date (YYYY-MM-DD) as a timestamp: now if it's today, else midday on that day. Null if invalid or in the future.
 function dateAt(key){if(!/^\d{4}-\d{2}-\d{2}$/.test(key||'')||key>todayKey())return null;if(key===todayKey())return new Date().toISOString();const d=parseKey(key);d.setHours(12,0,0,0);return d.toISOString()}
 // Only show a workout duration when it's believable; an open session finished days later would otherwise show thousands of minutes.
@@ -206,10 +249,395 @@ function weekDots(list,isCurrent){const days=Array.from({length:7},()=>({gym:0,r
 // ---------- state ----------
 const S={plan:null,state:null,sessions:[],loaded:{plan:false,state:false,sessions:false},view:'today',openEx:null,finishOpen:false,runOpen:false,histOpen:null,edit:null,online:navigator.onLine};
 const T={preset:90,remaining:90,endAt:null,running:false,fired:false};
+S.lib={seg:'ex',q:'',kinds:[],areas:[]};S.sheet=[];S.tonightPick=false;
 
 // ---------- persistence (on-device, works offline) ----------
 // New installs start with an empty plan; build one in the Plan tab (or restore a backup).
 const DEFAULT_PLAN={"runDays":[],"workouts":[]};
+// ---------- exercise library (static content, not user data) ----------
+// One entry per movement. ids are stable slugs — never rename once shipped (plan exercises point at them via libId).
+// kind: lift | core | stretch. area: legs hips back chest shoulders arms core ankles.
+// m / m2: primary / secondary muscle-map region ids (see MAP_REGIONS). fig: stick figure, stretches only.
+const LIBRARY=[
+// ----- lifts -----
+{id:'back-squat',name:'Back squat',kind:'lift',area:['legs','hips'],equipment:'Barbell + rack',
+ primary:['Quads','Glutes'],secondary:['Hamstrings','Adductors','Spinal erectors','Core'],m:['quads','glutes'],m2:['hamstrings','adductors','lowback','abs'],
+ summary:'The main leg builder. Bar on the upper back, sit down between the hips, stand back up.',
+ steps:['Bar across the upper traps, hands just outside the shoulders, feet shoulder-width with toes slightly out.','Big breath, brace, sit down keeping the chest up and the whole foot on the floor.','Hit parallel or lower.','Drive the floor away and stand.'],
+ cue:'Knees track over the toes; heels stay down.',mistake:'Chest dropping or heels lifting — the ankle stretch fixes this.',
+ ski:'The deep-flexion strength behind every turn and every bump.',demo:'back squat form'},
+{id:'romanian-deadlift',name:'Romanian deadlift',kind:'lift',area:['legs','hips','back'],equipment:'Barbell',
+ primary:['Hamstrings','Glutes'],secondary:['Spinal erectors','Grip'],m:['hamstrings','glutes'],m2:['lowback','forearms'],
+ summary:'A hip hinge with a nearly straight leg. Builds the back of the legs.',
+ steps:['Stand tall with the bar at the hips, knees soft.','Push the hips back, bar sliding down the thighs, back flat.','Stop at mid-shin or when the hamstrings are tight.','Drive the hips forward to stand.'],
+ cue:'It’s a hinge, not a squat — the knees barely move.',mistake:'Rounding the back to go lower.',
+ ski:'Posterior chain for absorbing bumps and holding the stance when tired.',demo:'romanian deadlift form'},
+{id:'bulgarian-split-squat',name:'Bulgarian split squat',kind:'lift',area:['legs','hips'],equipment:'Dumbbells + bench',
+ primary:['Quads','Glutes'],secondary:['Adductors','Hip flexors (rear leg)','Core'],m:['quads','glutes'],m2:['adductors','hipflex','abs'],
+ summary:'A single-leg squat with the rear foot raised. Weaker leg first; the strong side matches it.',
+ steps:['Rear foot on a bench, front foot about two feet ahead.','Drop straight down until the rear knee nearly touches the floor.','Drive through the front heel to stand.'],
+ cue:'Lean slightly forward for more glute, stay upright for more quad.',mistake:'Front foot too close to the bench, which drives the knee forward and hurts.',
+ ski:'Each turn loads one leg — this is that leg.',demo:'bulgarian split squat form'},
+{id:'standing-calf-raise',name:'Standing calf raise',kind:'lift',area:['ankles'],equipment:'Machine or step + dumbbell',
+ primary:['Calves (gastrocnemius)'],secondary:['Soleus'],m:['calves'],m2:['feet'],
+ summary:'Full-range calf work with a stretch at the bottom.',
+ steps:['Balls of the feet on a step or the machine platform.','Lower the heels for a full stretch.','Rise to the top and pause a second.','Three seconds back down.'],
+ cue:'Slow on the way down.',mistake:'Bouncing out of the bottom.',
+ ski:'Calves stabilise the ankle inside the boot; also protects the Achilles on the running days.',demo:'standing calf raise'},
+{id:'bench-press',name:'Bench press',kind:'lift',area:['chest','shoulders','arms'],equipment:'Barbell + bench',
+ primary:['Chest'],secondary:['Front delts','Triceps'],m:['chest'],m2:['frontdelts','triceps'],
+ summary:'The main pressing lift. Bar to the lower chest, press up and slightly back.',
+ steps:['Eyes under the bar, feet planted, shoulder blades pinched together and down.','Unrack, lower to the lower chest with elbows at about 45°.','Press up and slightly back toward the rack.','Lock out.'],
+ cue:'Wrists stacked over elbows; bar path is a slight arc.',mistake:'Elbows flared straight out to the sides.',demo:'bench press form'},
+{id:'single-arm-dumbbell-row',name:'Single-arm dumbbell row',kind:'lift',area:['back','arms'],equipment:'Dumbbell + bench',
+ primary:['Lats','Mid back (rhomboids, mid traps)'],secondary:['Biceps','Rear delts','Core'],m:['lats','traps'],m2:['biceps','reardelts','obliques'],
+ summary:'One-arm row with the other hand on a bench. The one-sided version keeps left and right honest.',
+ steps:['Same-side hand and knee on the bench, back flat.','Pull the dumbbell to the hip, elbow close to the body.','Lower under control and let the shoulder blade reach at the bottom.'],
+ cue:'Pull with the elbow, not the hand.',mistake:'Twisting the torso to get the weight up.',demo:'single arm dumbbell row form'},
+{id:'seated-dumbbell-shoulder-press',name:'Seated dumbbell shoulder press',kind:'lift',area:['shoulders','arms'],equipment:'Dumbbells + bench',
+ primary:['Shoulders (front and side delts)'],secondary:['Triceps','Upper traps'],m:['frontdelts','reardelts'],m2:['triceps','traps'],
+ summary:'Overhead press with the back supported.',
+ steps:['Back against the upright bench, dumbbells at ear level, palms forward.','Press up until the arms are straight (don’t clash the dumbbells).','Lower to ear height.'],
+ cue:'Ribs down — don’t arch the low back to push.',mistake:'Flaring the ribs and arching.',demo:'seated dumbbell shoulder press'},
+{id:'tricep-pushdown',name:'Tricep pushdown',kind:'lift',area:['arms'],equipment:'Cable',
+ primary:['Triceps'],secondary:[],m:['triceps'],m2:[],
+ summary:'Cable isolation for the back of the arm.',
+ steps:['Cable set high, rope or bar, elbows pinned at the sides.','Push down to a full lockout.','Control the way back up to about 90°.'],
+ cue:'The elbows don’t move.',mistake:'Leaning over the cable and letting the shoulders do the work.',demo:'tricep pushdown form'},
+{id:'trap-bar-deadlift',name:'Trap bar deadlift',kind:'lift',area:['legs','hips','back'],equipment:'Trap bar',
+ primary:['Glutes','Hamstrings','Quads'],secondary:['Spinal erectors','Traps','Grip'],m:['glutes','hamstrings','quads'],m2:['lowback','traps','forearms'],
+ summary:'A deadlift standing inside the hexagonal bar. Friendlier on the back than a straight bar and the best whole-leg strength lift there is.',
+ steps:['Stand in the middle, feet hip-width.','Hips down, chest up, grab the handles.','Push the floor away and stand tall.','Lower with the hips back, bar close.'],
+ cue:'Like a jump without leaving the floor.',mistake:'Hips shooting up before the chest.',
+ ski:'Whole-body posterior strength — the lift that most helps leg endurance by day three on the mountain.',demo:'trap bar deadlift form'},
+{id:'walking-lunge',name:'Walking lunge',kind:'lift',area:['legs','hips'],equipment:'Dumbbells',
+ primary:['Quads','Glutes'],secondary:['Hamstrings','Adductors','Hip flexors','Core'],m:['quads','glutes'],m2:['hamstrings','adductors','hipflex','abs'],
+ summary:'Alternating lunges moving forward. Reps are per leg.',
+ steps:['Step long, drop the back knee to just off the floor.','Front shin close to vertical, torso tall.','Drive through the front heel straight into the next step.'],
+ cue:'Control the way down; don’t drop.',mistake:'Short steps that push the knee past the toes with the heel up.',
+ ski:'Single-leg strength with deceleration — exactly what moguls ask for.',demo:'walking lunge form'},
+{id:'leg-curl',name:'Leg curl',kind:'lift',area:['legs'],equipment:'Machine',
+ primary:['Hamstrings'],secondary:['Calves'],m:['hamstrings'],m2:['calves'],
+ summary:'Machine isolation for the hamstrings.',
+ steps:['Pad just above the heels.','Curl to full range, pause.','Three seconds back.'],
+ cue:'Hips stay down on the pad.',mistake:'Lifting the hips to cheat the weight up.',
+ ski:'Hamstrings protect the ACL — this is the knee-insurance lift.',demo:'lying leg curl form'},
+{id:'incline-dumbbell-press',name:'Incline dumbbell press',kind:'lift',area:['chest','shoulders'],equipment:'Dumbbells + incline bench',
+ primary:['Upper chest'],secondary:['Front delts','Triceps'],m:['chest'],m2:['frontdelts','triceps'],
+ summary:'Pressing on a ~30° incline to hit the upper chest.',
+ steps:['Bench at about 30°, dumbbells at chest height.','Press up and slightly in.','Lower until the elbows are just below chest level.'],
+ cue:'Elbows at about 45°, not flared.',mistake:'Bench too steep — it becomes a shoulder press.',demo:'incline dumbbell press form'},
+{id:'chin-up',name:'Chin-up',kind:'lift',area:['back','arms'],equipment:'Bar',
+ primary:['Lats','Biceps'],secondary:['Rear delts','Forearms','Core'],m:['lats','biceps'],m2:['reardelts','forearms','abs'],
+ summary:'Underhand pull-up. Log assistance as a negative weight if using the machine.',
+ steps:['Underhand grip, shoulder-width, start from a dead hang.','Pull until the chin clears the bar, chest toward the bar.','Lower all the way down.'],
+ cue:'Every rep starts from straight arms.',mistake:'Kipping or half reps.',demo:'chin up form'},
+{id:'single-arm-lateral-raise',name:'Single-arm lateral raise',kind:'lift',area:['shoulders'],equipment:'Dumbbell',
+ primary:['Side delts'],secondary:['Upper traps'],m:['frontdelts','reardelts'],m2:['traps'],
+ summary:'One arm at a time, holding the rack with the other hand for balance.',
+ steps:['Hold the rack with the free hand, dumbbell at the side.','Raise out to shoulder height with a slight bend in the elbow.','Lower slowly.'],
+ cue:'Lead with the elbow; thumb level or slightly down.',mistake:'Swinging the weight up.',demo:'dumbbell lateral raise form'},
+{id:'dumbbell-curl',name:'Dumbbell curl',kind:'lift',area:['arms'],equipment:'Dumbbells',
+ primary:['Biceps'],secondary:['Forearms'],m:['biceps'],m2:['forearms'],
+ summary:'Standing curl, both arms or alternating.',
+ steps:['Stand tall, dumbbells at the sides, palms forward.','Curl up and squeeze.','Lower slowly.'],
+ cue:'Elbows stay at your sides.',mistake:'Swinging the torso.',demo:'dumbbell bicep curl form'},
+// ----- core finishers -----
+{id:'hanging-knee-raise',name:'Hanging knee raise',kind:'core',area:['core','hips'],equipment:'Bar',
+ primary:['Abs','Hip flexors'],secondary:['Obliques','Grip'],m:['abs','hipflex'],m2:['obliques','forearms'],
+ summary:'Hang from the bar and bring the knees up to the chest.',
+ steps:['Dead hang, shoulders set.','Bring the knees to the chest and curl the pelvis up at the top.','Lower under control, no swing.'],
+ cue:'Curl the pelvis, don’t just lift the knees.',mistake:'Swinging.',
+ ski:'Hip flexor and trunk control for staying forward over the skis.',demo:'hanging knee raise form'},
+{id:'dead-bug',name:'Dead bug',kind:'core',area:['core'],equipment:'Mat',
+ primary:['Deep core (transverse abdominis)','Abs'],secondary:['Hip flexors'],m:['abs'],m2:['hipflex'],
+ summary:'Lying on the back, extend opposite arm and leg while the low back stays glued to the floor.',
+ steps:['On the back, arms to the ceiling, knees over the hips at 90°.','Breathe out and extend one arm overhead and the opposite leg long, hovering.','Return and swap. Reps are per side.'],
+ cue:'Exhale as you extend.',mistake:'Low back arching off the floor.',
+ ski:'Trunk stability that keeps the upper body quiet while the legs work.',demo:'dead bug exercise'},
+{id:'cable-crunch',name:'Cable crunch',kind:'core',area:['core'],equipment:'Cable',
+ primary:['Abs'],secondary:['Obliques'],m:['abs'],m2:['obliques'],
+ summary:'Kneeling crunch against the cable.',
+ steps:['Kneel facing the stack, rope held behind the head.','Crunch the ribs down toward the hips.','Return under control.'],
+ cue:'The hips stay still — it’s the spine bending, not a hip hinge.',mistake:'Pulling with the arms.',demo:'cable crunch form'},
+{id:'side-plank',name:'Side plank',kind:'core',area:['core'],equipment:'Mat',
+ primary:['Obliques','Side of the trunk (quadratus lumborum)'],secondary:['Glute medius','Shoulder stabilisers'],m:['obliques'],m2:['glutes','reardelts'],
+ summary:'Hold the body in one straight line on one forearm. Time per side; weaker side first.',
+ steps:['Forearm on the mat, elbow under the shoulder, feet stacked.','Lift the hips so the body is a straight line.','Hold.'],
+ cue:'Push the hip up and slightly forward.',mistake:'Hips sagging.',
+ ski:'Lateral trunk strength — holding the body over the outside ski.',demo:'side plank form'},
+{id:'ab-wheel-rollout',name:'Ab wheel rollout',kind:'core',area:['core'],equipment:'Ab wheel (or plank walkout)',
+ primary:['Abs','Deep core'],secondary:['Lats','Hip flexors'],m:['abs'],m2:['lats','hipflex'],
+ summary:'Roll the wheel out from the knees as far as the back stays flat, pull back.',
+ steps:['Kneel, wheel under the shoulders, pelvis tucked.','Roll out slowly as far as you can without the low back sagging.','Pull back with the abs.'],
+ cue:'Tuck the pelvis before you move.',mistake:'Low back sagging at the far end. No wheel: walk the hands out from a kneeling plank instead.',demo:'ab wheel rollout form'},
+{id:'russian-twist',name:'Russian twist',kind:'core',area:['core'],equipment:'Plate or dumbbell',
+ primary:['Obliques'],secondary:['Abs','Hip flexors'],m:['obliques'],m2:['abs','hipflex'],
+ summary:'Seated rotation side to side with a plate. Reps are total touches.',
+ steps:['Sit, lean back about 45°, feet on the floor (or raised for harder).','Rotate the plate to touch the floor on one side, then the other.'],
+ cue:'Turn the ribcage, not just the arms.',mistake:'Going fast and sloppy.',
+ ski:'Rotation control for the separation between the upper body and the legs.',demo:'russian twist form'},
+{id:'reverse-crunch',name:'Reverse crunch',kind:'core',area:['core'],equipment:'Mat',
+ primary:['Lower abs'],secondary:['Hip flexors'],m:['abs'],m2:['hipflex'],
+ summary:'Lying on the back, curl the knees to the chest and lift the hips off the floor.',
+ steps:['On the back, knees bent, hands by the sides.','Curl the knees toward the chest until the hips lift.','Lower slowly.'],
+ cue:'Slow on the way down.',mistake:'Using momentum to swing the legs.',demo:'reverse crunch form'},
+{id:'pallof-press',name:'Pallof press',kind:'core',area:['core'],equipment:'Cable',
+ primary:['Obliques','Deep core (anti-rotation)'],secondary:['Shoulders'],m:['obliques','abs'],m2:['frontdelts'],
+ summary:'Stand side-on to the cable and press the handle straight out while it tries to twist you. Reps per side.',
+ steps:['Cable at chest height, stand side-on, handle at the chest.','Press the handle straight out and hold a second.','Bring it back.'],
+ cue:'Feet planted, resist the twist.',mistake:'Letting the hips turn toward the stack.',
+ ski:'Anti-rotation is the upper body facing downhill while the legs turn underneath.',demo:'pallof press form'},
+// ----- stretches -----
+{id:'deep-squat-hold',name:'Deep squat hold',kind:'stretch',area:['hips','ankles'],equipment:'Mat',
+ primary:['Hips (adductors, glutes)','Ankles'],secondary:['Low back','Quads'],m:['adductors','glutes','calves'],m2:['lowback','quads'],
+ summary:'Sit in the bottom of a squat with the heels down and the elbows pushing the knees out.',
+ steps:['Feet shoulder-width, toes slightly out.','Sink all the way down, heels on the floor.','Elbows inside the knees, push them out gently.','Breathe; rock a little.'],
+ cue:'Chest tall.',mistake:'Heels lifting — hold the doorframe or widen the stance.',
+ ski:'The deepest flexion you’ll ever need on a mountain.',demo:'deep squat hold mobility',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="66" cy="38" r="8"/><path class="fig" d="M66 46 L58 100"/><path class="fig hi" d="M58 100 L98 88"/><path class="fig hi" d="M98 88 L92 120"/><path class="fig" d="M92 120 L110 120"/><path class="fig" d="M65 58 L82 84 L92 98"/>'},
+{id:'couch-stretch',name:'Couch stretch',kind:'stretch',area:['hips','legs'],equipment:'Mat + wall',
+ primary:['Hip flexors','Quads'],secondary:[],m:['hipflex','quads'],m2:[],
+ summary:'Kneel facing away from a wall with the rear shin flat up the wall, front foot forward.',
+ steps:['Rear knee on the mat close to the wall, shin up the wall.','Step the front foot forward, foot flat.','Squeeze the rear glute and come upright as far as the hip allows.','Breathe out long.'],
+ cue:'Stay tall; the stretch comes from the glute squeeze.',mistake:'Arching the low back.',
+ ski:'The back-seat fix — tight hip flexors put you behind your boots when tired.',demo:'couch stretch how to',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><line class="wall" x1="124" y1="20" x2="124" y2="120"/><circle class="head" cx="52" cy="34" r="8"/><path class="fig" d="M52 42 L54 78"/><path class="fig" d="M54 78 L26 94 L28 120"/><path class="fig hi" d="M54 78 L96 100"/><path class="fig" d="M96 100 L122 70"/><path class="fig" d="M53 52 L34 70"/><path class="fig" d="M53 52 L70 66"/>'},
+{id:'half-kneeling-hip-flexor',name:'Half-kneeling hip flexor stretch',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Hip flexors'],secondary:['Quads'],m:['hipflex'],m2:['quads'],
+ summary:'The simpler cousin of the couch stretch, no wall needed.',
+ steps:['Half-kneel, rear knee on the mat, front foot flat.','Tuck the pelvis — squeeze the rear glute.','Shift forward an inch, hold, breathe.'],
+ cue:'The stretch comes from the tuck, not from lunging forward.',mistake:'Arching the low back and leaning.',
+ ski:'Same back-seat fix as the couch stretch; do it every night.',demo:'half kneeling hip flexor stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="60" cy="30" r="8"/><path class="fig" d="M60 38 L62 78"/><path class="fig" d="M62 78 L92 82 L92 120 L106 120"/><path class="fig hi" d="M62 78 L40 118"/><path class="fig" d="M40 118 L14 118"/><path class="fig" d="M61 50 L58 76"/>'},
+{id:'ninety-ninety',name:'90/90 hip stretch',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Glutes and deep hip rotators (front leg)','Hip internal rotation (rear leg)'],secondary:['Adductors'],m:['glutes'],m2:['adductors'],
+ summary:'Seated with both knees at 90°, one shin in front and one out to the side. Sit tall, then fold over the front shin.',
+ steps:['Sit with the front shin across in front of you, knee at 90°.','Rear shin out to the side, also at 90°.','Sit tall; try to keep both sit bones down.','Fold over the front shin. Switch.'],
+ cue:'Both sit bones on the floor if possible.',mistake:'Collapsing onto one hip.',
+ ski:'Hip rotation both ways is what edging asks of the hips.',demo:'90 90 hip stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="70" cy="34" r="8"/><path class="fig" d="M70 42 L70 86"/><path class="fig hi" d="M70 86 L38 94"/><path class="fig" d="M38 94 L44 118"/><path class="fig hi" d="M70 86 L102 94"/><path class="fig" d="M102 94 L96 118"/><path class="fig" d="M70 56 L52 82"/><path class="fig" d="M70 56 L88 82"/>'},
+{id:'kneeling-ankle-stretch',name:'Kneeling ankle stretch',kind:'stretch',area:['ankles'],equipment:'Mat',
+ primary:['Calves (soleus)','Ankle'],secondary:[],m:['calves','feet'],m2:[],
+ summary:'Half-kneel and drive the front knee forward over the toes with the heel down.',
+ steps:['Half-kneel with the front foot flat on the mat.','Drive the knee forward over the toes.','The heel must stay down; back off until it does.','Hold, rock gently.'],
+ cue:'Knee tracks over the second toe.',mistake:'Heel lifting.',
+ ski:'This is the ski-boot angle. Nightly holds move it fast.',demo:'knee to wall ankle mobility',
+ fig:'<line class="floor" x1="8" y1="118" x2="132" y2="118"/><circle class="head" cx="60" cy="30" r="8"/><path class="fig" d="M60 38 L64 72"/><path class="fig" d="M64 72 L96 72 L100 118"/><path class="fig" d="M64 72 L44 92"/><path class="fig hi" d="M44 92 L36 118"/><path class="fig" d="M36 118 L22 118"/><path class="fig" d="M62 50 L40 84"/><path class="fig" d="M62 50 L84 60"/>'},
+{id:'pigeon',name:'Pigeon',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Glutes','Deep hip rotators'],secondary:['Hip flexors (rear leg)'],m:['glutes'],m2:['hipflex'],
+ summary:'Front shin across the mat, rear leg straight back, hips square. Fold forward to deepen.',
+ steps:['From all fours, bring one knee forward and lay the shin across the mat.','Slide the rear leg straight back.','Square the hips.','Stay upright, or fold over the front shin.'],
+ cue:'Hips level, not tipped.',mistake:'Rolling onto the hip of the front leg. If the knee complains, pull the front foot closer to the hip.',
+ ski:'Hip mobility for deep, rotated positions.',demo:'pigeon pose how to',
+ fig:'<line class="floor" x1="8" y1="112" x2="132" y2="112"/><circle class="head" cx="38" cy="58" r="8"/><path class="fig" d="M44 64 L70 92"/><path class="fig hi" d="M70 92 L50 108 L22 108"/><path class="fig" d="M70 92 L100 112 L128 112"/><path class="fig" d="M50 72 L24 92"/><path class="fig" d="M50 72 L36 96"/>'},
+{id:'reclined-butterfly',name:'Reclined butterfly',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Adductors','Hip external rotation'],secondary:[],m:['adductors','glutes'],m2:[],
+ summary:'Lie on the back, soles of the feet together, knees falling out to the sides.',
+ steps:['Lie back, soles together, heels toward the hips.','Let the knees fall out.','Arms by the sides or on the belly. Breathe.'],
+ cue:'Let gravity do it; don’t push the knees.',mistake:'Tensing to hold the knees down.',demo:'reclined butterfly stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="22" cy="110" r="8"/><path class="fig" d="M30 112 L78 112"/><path class="fig hi" d="M78 112 L98 90"/><path class="fig" d="M98 90 L112 112"/><path class="fig" d="M78 112 L104 100 L118 114"/><path class="fig" d="M42 112 L60 116"/>'},
+{id:'legs-up-the-wall',name:'Legs up the wall',kind:'stretch',area:['legs'],equipment:'Mat + wall',
+ primary:['Hamstrings (mild)','Nervous system downshift'],secondary:['Low back'],m:['hamstrings'],m2:['lowback'],
+ summary:'Lie with the hips near a wall and the legs straight up it. The wind-down finisher.',
+ steps:['Sit side-on to the wall, swing the legs up as you lie back.','Hips close to the wall, arms out.','Breathe: 4 in, 6–8 out.'],
+ cue:'This is for the brain as much as the legs.',mistake:'Rushing it.',demo:'legs up the wall pose',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><line class="wall" x1="100" y1="20" x2="100" y2="120"/><circle class="head" cx="30" cy="110" r="8"/><path class="fig" d="M38 112 L90 112"/><path class="fig hi" d="M90 112 L94 36"/><path class="fig" d="M50 112 L56 96"/>'},
+{id:'doorframe-pec-stretch',name:'Doorframe pec stretch',kind:'stretch',area:['chest','shoulders'],equipment:'Doorframe',
+ primary:['Chest'],secondary:['Front delts','Biceps'],m:['chest'],m2:['frontdelts','biceps'],
+ summary:'Forearm on the doorframe, step through gently. Three elbow heights: low, shoulder, high.',
+ steps:['Forearm on the frame, elbow below the shoulder.','Step forward until you feel the chest.','Repeat at shoulder height, then with the elbow high.'],
+ cue:'Ribs down, don’t twist to chase it.',mistake:'Shrugging the shoulder up.',demo:'doorway pec stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><line class="wall" x1="94" y1="14" x2="94" y2="120"/><circle class="head" cx="52" cy="30" r="8"/><path class="fig" d="M52 38 L58 80"/><path class="fig" d="M58 80 L42 120"/><path class="fig" d="M58 80 L78 120"/><path class="fig hi" d="M54 50 L92 46"/><path class="fig" d="M92 46 L92 24"/><path class="fig" d="M54 50 L40 78"/>'},
+{id:'childs-pose',name:'Child’s pose',kind:'stretch',area:['back','hips'],equipment:'Mat',
+ primary:['Lats','Low back','Hips'],secondary:['Shoulders'],m:['lats','lowback','glutes'],m2:['reardelts'],
+ summary:'Knees wide, sit back on the heels, arms long, forehead down. Walk the hands to one side to bias the lat.',
+ steps:['Kneel, knees wide, big toes together.','Sit back onto the heels.','Arms long in front, forehead to the mat.','Lat version: walk both hands to one side, then the other.'],
+ cue:'Sink the armpits toward the floor.',mistake:'Hips lifting off the heels.',demo:'child’s pose lat stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M124 120 L96 120 L90 100"/><path class="fig hi" d="M90 100 L50 110"/><circle class="head" cx="40" cy="113" r="7"/><path class="fig" d="M62 108 L20 118"/>'},
+{id:'thread-the-needle',name:'Thread the needle',kind:'stretch',area:['back','shoulders'],equipment:'Mat',
+ primary:['Upper back (thoracic rotation)','Rear shoulder'],secondary:[],m:['traps','lats','reardelts'],m2:[],
+ summary:'From all fours, slide one arm under the body, shoulder to the floor; then reach it to the ceiling.',
+ steps:['All fours, hips over knees.','Slide one arm under the body, palm up, until the shoulder and ear rest on the mat.','Hold, then unwind and reach that arm to the ceiling. Reps per side; hold the last one.'],
+ cue:'Hips stay stacked over the knees.',mistake:'Letting the hips swing to one side.',
+ ski:'Upper-body rotation independent of the hips.',demo:'thread the needle stretch',
+ fig:'<line class="floor" x1="6" y1="118" x2="64" y2="118"/><line class="floor" x1="76" y1="118" x2="134" y2="118"/><circle class="head" cx="14" cy="96" r="6"/><path class="fig hi" d="M22 90 L52 88"/><path class="fig" d="M52 88 L54 118"/><path class="fig" d="M22 90 L18 118"/><path class="fig" d="M24 92 L44 112"/><path class="fig" d="M66 70 L74 70 M71 67 L74 70 L71 73" style="stroke-width:2"/><circle class="head" cx="84" cy="78" r="6"/><path class="fig hi" d="M92 88 L122 88"/><path class="fig" d="M122 88 L124 118"/><path class="fig" d="M92 88 L88 118"/><path class="fig" d="M94 86 L100 52"/>'},
+{id:'puppy-pose',name:'Puppy pose',kind:'stretch',area:['back','shoulders'],equipment:'Mat',
+ primary:['Lats','Upper back (extension)','Shoulders'],secondary:['Chest'],m:['lats','traps','reardelts'],m2:['chest'],
+ summary:'All fours, walk the hands forward and sink the chest to the mat while the hips stay over the knees.',
+ steps:['All fours.','Walk the hands forward, hips stay high over the knees.','Chest and forehead sink toward the mat.','Breathe.'],
+ cue:'Armpits down.',mistake:'Sitting back into child’s pose.',demo:'puppy pose yoga',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M130 120 L104 120 L100 84"/><path class="fig hi" d="M100 84 L56 106"/><circle class="head" cx="46" cy="110" r="7"/><path class="fig" d="M58 104 L18 118"/>'},
+{id:'sphinx',name:'Sphinx',kind:'stretch',area:['core','hips'],equipment:'Mat',
+ primary:['Abs','Hip flexors (mild)','Spinal extension'],secondary:['Chest'],m:['abs','hipflex'],m2:['chest'],
+ summary:'Lie on the front, forearms down, lift the chest, hips stay on the mat.',
+ steps:['On the front, elbows under the shoulders, forearms flat.','Press the forearms down and lift the chest.','Hips stay heavy. Breathe.'],
+ cue:'Long neck, shoulders away from the ears.',mistake:'Pinching in the low back — lower the chest if so.',demo:'sphinx pose',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M130 116 L74 116"/><path class="fig hi" d="M74 116 L48 90"/><circle class="head" cx="42" cy="80" r="8"/><path class="fig" d="M50 92 L44 116 L20 116"/>'},
+{id:'supine-overhead-reach',name:'Supine overhead reach',kind:'stretch',area:['back','shoulders'],equipment:'Mat',
+ primary:['Lats','Chest','Shoulders'],secondary:[],m:['lats','chest','frontdelts'],m2:[],
+ summary:'On the back, knees bent, arms straight overhead to the floor with the ribs down.',
+ steps:['Lie on the back, knees bent, feet flat.','Reach both arms overhead, backs of the hands toward the floor.','Keep the ribs down. Hold.'],
+ cue:'If the hands don’t reach the floor, bend the elbows a little.',mistake:'Ribs flaring to get the arms down.',demo:'supine overhead reach stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="50" cy="104" r="8"/><path class="fig hi" d="M58 112 L100 112"/><path class="fig" d="M100 112 L114 86 L126 114"/><path class="fig" d="M58 110 L30 100 L12 112"/>'},
+{id:'supine-twist',name:'Supine twist',kind:'stretch',area:['back','hips','core'],equipment:'Mat',
+ primary:['Low back','Glutes','Obliques'],secondary:['Chest','Upper back'],m:['lowback','glutes','obliques'],m2:['chest','traps'],
+ summary:'On the back, one knee across the body, opposite arm out, head looking the other way.',
+ steps:['Lie on the back, draw one knee up.','Guide it across the body with the opposite hand.','Other arm out to the side, look toward it.','Both shoulders stay down. Switch.'],
+ cue:'Shoulders on the floor.',mistake:'Lifting the shoulder to get the knee lower.',demo:'supine spinal twist',
+ fig:'<rect class="floor" x="26" y="8" width="88" height="126" rx="6"/><circle class="head" cx="70" cy="24" r="8"/><path class="fig" d="M70 32 L70 58"/><path class="fig hi" d="M70 58 L70 82"/><path class="fig hi" d="M70 82 L44 96 L50 118"/><path class="fig" d="M70 82 L78 122"/><path class="fig" d="M70 44 L108 44"/><path class="fig" d="M70 44 L48 70"/>'},
+{id:'slow-breathing-lying',name:'Slow breathing (lying)',kind:'stretch',area:['core'],equipment:'Mat',
+ primary:['Nervous system downshift','Diaphragm'],secondary:[],m:['abs'],m2:[],
+ summary:'Flat on the back, hands on the lower ribs. In through the nose for 4, out for 6–8, feeling the ribs widen sideways.',
+ steps:['Lie flat, knees bent or straight.','Hands on the lower ribs.','Breathe in through the nose for 4 seconds, feel the ribs push into the hands.','Out slowly for 6–8 seconds. Repeat.'],
+ cue:'Longer out than in.',mistake:'Breathing into the chest and shoulders.',demo:'diaphragmatic breathing lying down',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="26" cy="110" r="8"/><path class="fig" d="M34 112 L56 112"/><path class="fig hi" d="M56 112 L76 112"/><path class="fig" d="M76 112 L128 114"/><path class="fig" d="M44 112 L56 98 L66 106"/>'},
+{id:'seated-straddle-fold',name:'Seated straddle fold',kind:'stretch',area:['legs','hips'],equipment:'Mat',
+ primary:['Hamstrings','Adductors'],secondary:['Low back'],m:['hamstrings','adductors'],m2:['lowback'],
+ summary:'Legs wide, toes up, hinge forward to the centre, then over each leg.',
+ steps:['Sit with the legs wide, toes pointing up.','Hinge from the hips, long spine, walk the hands forward.','Hold centre, then over each leg.'],
+ cue:'Long spine first; rounding comes last.',mistake:'Rounding straight away to get lower.',demo:'seated straddle forward fold',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M40 114 L62 76"/><circle class="head" cx="68" cy="68" r="8"/><path class="fig hi" d="M40 114 L128 116"/><path class="fig" d="M128 116 L128 104"/><path class="fig" d="M56 88 L104 106"/>'},
+{id:'frog',name:'Frog',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Adductors'],secondary:['Hip internal rotation'],m:['adductors'],m2:[],
+ summary:'Knees wide, shins parallel, forearms down, hips pushing back toward the heels.',
+ steps:['On all fours, walk the knees wide.','Turn the feet out so the shins are parallel.','Forearms down, hips back toward the heels.','Breathe; ease in over the hold.'],
+ cue:'Go gently; this one bites.',mistake:'Forcing it in the first 20 seconds.',demo:'frog stretch adductors',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M132 120 L104 120"/><path class="fig hi" d="M104 120 L96 92"/><path class="fig" d="M96 92 L46 98"/><circle class="head" cx="36" cy="102" r="8"/><path class="fig" d="M50 98 L42 118 L18 118"/><path class="fig" d="M104 120 L120 108"/>'},
+{id:'cossack-hold',name:'Cossack hold',kind:'stretch',area:['hips','legs','ankles'],equipment:'Mat',
+ primary:['Adductors (straight leg)','Glutes and quads (bent leg)'],secondary:['Hamstrings','Ankle'],m:['adductors','glutes','quads'],m2:['hamstrings','calves'],
+ summary:'Wide stance, sit down to one side with the other leg straight and the toes up. Hand on the floor for balance.',
+ steps:['Stand wide.','Sit down over one foot, heel down.','Other leg straight, toes pointing up.','Hold, breathe. Switch.'],
+ cue:'The bent-leg heel stays on the floor.',mistake:'Heel lifting — don’t go as deep.',
+ ski:'Lateral hip range for wide stances and recoveries.',demo:'cossack squat stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="60" cy="40" r="8"/><path class="fig" d="M60 48 L56 96"/><path class="fig" d="M56 96 L30 100 L36 120"/><path class="fig hi" d="M56 96 L122 118"/><path class="fig" d="M122 118 L122 106"/><path class="fig" d="M59 62 L40 88"/><path class="fig" d="M59 62 L80 82"/>'},
+{id:'lying-hamstring-stretch',name:'Lying hamstring stretch',kind:'stretch',area:['legs'],equipment:'Mat (towel optional)',
+ primary:['Hamstrings'],secondary:['Calves (foot flexed)'],m:['hamstrings'],m2:['calves'],
+ summary:'On the back, one leg up with the hands behind the thigh, other leg flat.',
+ steps:['Lie on the back, one leg flat.','Lift the other, hands behind the thigh or a towel round the foot.','Knee soft first, then straighten, then flex the foot.'],
+ cue:'Keep the other leg flat and the hips down.',mistake:'Pulling the leg across the body.',demo:'lying hamstring stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="26" cy="110" r="8"/><path class="fig" d="M34 112 L80 112"/><path class="fig" d="M80 112 L128 114"/><path class="fig hi" d="M80 112 L86 62"/><path class="fig" d="M50 110 L80 86"/>'},
+{id:'downward-dog',name:'Downward dog',kind:'stretch',area:['legs','ankles','shoulders'],equipment:'Mat',
+ primary:['Hamstrings','Calves','Lats and shoulders'],secondary:[],m:['hamstrings','calves','lats'],m2:[],
+ summary:'Hands and feet on the mat, hips high. Pedal the heels, then hold with the heels sinking.',
+ steps:['From all fours, lift the hips up and back into an inverted V.','Pedal the heels one at a time.','Hold with both heels sinking.'],
+ cue:'Bend the knees to get the back long if the hamstrings are tight.',mistake:'Rounding the back to force the heels down.',demo:'downward dog form',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M26 120 L78 54"/><circle class="head" cx="38" cy="92" r="8"/><path class="fig hi" d="M78 54 L104 96 L116 120"/><path class="fig" d="M116 120 L108 120"/>'},
+{id:'seated-calf-wall-stretch',name:'Seated calf wall stretch',kind:'stretch',area:['ankles'],equipment:'Mat + wall',
+ primary:['Calves (gastrocnemius)'],secondary:['Hamstrings'],m:['calves'],m2:['hamstrings'],
+ summary:'Sit with one leg out, ball of the foot flat on the wall, heel on the floor, lean in.',
+ steps:['Sit facing the wall, one leg straight.','Ball of the foot on the wall, heel on the floor.','Lean the torso toward the leg.'],
+ cue:'Knee straight.',mistake:'Bending the knee to get closer.',demo:'seated calf stretch wall',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><line class="wall" x1="118" y1="30" x2="118" y2="120"/><path class="fig" d="M40 116 L60 74"/><circle class="head" cx="66" cy="66" r="8"/><path class="fig" d="M40 116 L78 116"/><path class="fig hi" d="M78 116 L112 116 L116 102"/><path class="fig" d="M54 88 L90 104"/>'},
+{id:'lying-figure-4',name:'Lying figure-4',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Glutes','Deep hip rotators'],secondary:[],m:['glutes'],m2:[],
+ summary:'On the back, ankle on the opposite knee, pull the bottom leg in.',
+ steps:['Lie on the back, knees bent.','Cross one ankle onto the opposite knee.','Pull the bottom thigh toward the chest; push the top knee away.'],
+ cue:'Head and shoulders stay down.',mistake:'Lifting the head to reach the leg.',demo:'figure 4 glute stretch lying',
+ fig:'<rect class="floor" x="26" y="8" width="88" height="126" rx="6"/><circle class="head" cx="70" cy="24" r="8"/><path class="fig" d="M70 32 L70 78"/><path class="fig" d="M70 78 L54 102 L64 122"/><path class="fig hi" d="M70 78 L100 90 L56 102"/><path class="fig" d="M70 44 L52 94"/><path class="fig" d="M70 44 L74 98"/>'},
+{id:'seated-side-bend',name:'Seated side bend',kind:'stretch',area:['core','back'],equipment:'Mat',
+ primary:['Obliques','Side of the trunk','Lats'],secondary:[],m:['obliques','lats'],m2:[],
+ summary:'Sit cross-legged, one hand down, the other reaching up and over.',
+ steps:['Sit tall, cross-legged or straddle.','One hand on the mat beside you.','Reach the other arm up and over, lengthening the side. Switch.'],
+ cue:'Lift up before you bend over.',mistake:'Collapsing forward.',demo:'seated side bend stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="54" cy="40" r="8"/><path class="fig hi" d="M70 94 L58 50"/><path class="fig" d="M70 94 L40 104 L74 114"/><path class="fig" d="M70 94 L100 104 L66 114"/><path class="fig hi" d="M62 58 Q88 16 110 44"/><path class="fig" d="M60 62 L36 94"/>'},
+{id:'happy-baby',name:'Happy baby',kind:'stretch',area:['hips','back'],equipment:'Mat',
+ primary:['Hips (flexion and rotation)','Adductors','Low back'],secondary:[],m:['glutes','adductors','lowback'],m2:[],
+ summary:'On the back holding the outsides of the feet, knees toward the armpits, low back on the mat. Rock gently.',
+ steps:['Lie on the back, knees to the chest.','Hold the outside edges of the feet.','Pull the knees down toward the armpits, soles to the ceiling.','Rock gently, breathe.'],
+ cue:'Low back stays on the floor.',mistake:'Tailbone lifting.',demo:'happy baby pose',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="26" cy="110" r="8"/><path class="fig" d="M34 112 L76 112"/><path class="fig hi" d="M76 112 L60 82"/><path class="fig" d="M60 82 L66 56"/><path class="fig" d="M76 112 L70 84 L78 58"/><path class="fig" d="M44 110 L64 60"/>'},
+{id:'open-book',name:'Open book',kind:'stretch',area:['back','chest'],equipment:'Mat',
+ primary:['Upper back (thoracic rotation)','Chest'],secondary:['Obliques'],m:['traps','lats','chest'],m2:['obliques'],
+ summary:'Side-lying with the knees stacked and bent; the top arm opens over to the other side while the knees stay down.',
+ steps:['Lie on one side, knees bent and stacked, arms together straight out in front.','Lift the top arm and open it over to the far side, eyes following the hand.','Knees stay together on the floor.','Return. Reps per side.'],
+ cue:'Rotate from the ribcage, not the arm.',mistake:'Top knee lifting.',
+ ski:'Upper/lower body separation — the thing that makes turns look easy.',demo:'open book thoracic rotation',
+ fig:'<rect class="floor" x="6" y="8" width="60" height="126" rx="6"/><rect class="floor" x="74" y="8" width="60" height="126" rx="6"/><circle class="head" cx="30" cy="24" r="7"/><path class="fig" d="M30 31 L30 82"/><path class="fig" d="M30 82 L50 96 L34 112"/><path class="fig" d="M30 46 L58 46"/><path class="fig" d="M66 70 L74 70 M71 67 L74 70 L71 73" style="stroke-width:2"/><circle class="head" cx="100" cy="24" r="7"/><path class="fig hi" d="M100 31 L100 82"/><path class="fig" d="M100 82 L120 96 L104 112"/><path class="fig" d="M100 46 L128 46"/><path class="fig hi" d="M100 46 L80 54"/>'},
+{id:'bicep-chest-wall-stretch',name:'Bicep and chest wall stretch',kind:'stretch',area:['arms','chest'],equipment:'Wall',
+ primary:['Biceps','Chest'],secondary:['Front delts'],m:['biceps','chest'],m2:['frontdelts'],
+ summary:'Palm flat on the wall behind you, fingers pointing back, turn the body away gently.',
+ steps:['Stand side-on to the wall.','Palm flat on the wall behind you at shoulder height, fingers back.','Turn the chest away from the wall until you feel the front of the arm. Switch.'],
+ cue:'Arm straight, shoulder down.',mistake:'Shrugging.',demo:'bicep wall stretch',
+ fig:'<line class="wall" x1="110" y1="10" x2="110" y2="130"/><circle class="head" cx="60" cy="68" r="9"/><path class="fig hi" d="M46 60 L76 78"/><path class="fig hi" d="M76 78 L108 86"/><path class="fig" d="M46 60 L30 84"/>'},
+{id:'side-lying-windmill',name:'Side-lying windmill',kind:'stretch',area:['back','chest','core'],equipment:'Mat',
+ primary:['Upper back (rotation)','Chest','Obliques'],secondary:[],m:['traps','chest','obliques'],m2:[],
+ summary:'Side-lying with the top knee bent and pinned down; the top arm sweeps a big slow circle across the floor over the head and round.',
+ steps:['Lie on one side, top knee bent and held down by the bottom hand.','Top arm straight; sweep it slowly along the floor up over the head and round behind you.','Keep the knee pinned. Reps per side.'],
+ cue:'Slow; follow the hand with the eyes.',mistake:'Rushing, or the knee lifting.',demo:'side lying windmill stretch',
+ fig:'<rect class="floor" x="6" y="8" width="60" height="126" rx="6"/><rect class="floor" x="74" y="8" width="60" height="126" rx="6"/><circle class="head" cx="30" cy="26" r="7"/><path class="fig" d="M30 33 L30 84"/><path class="fig" d="M30 84 L50 98 L36 114"/><path class="fig" d="M30 48 L58 48"/><path class="fig" d="M30 50 L48 96"/><path class="fig" d="M66 70 L74 70 M71 67 L74 70 L71 73" style="stroke-width:2"/><circle class="head" cx="100" cy="26" r="7"/><path class="fig hi" d="M100 33 L100 84"/><path class="fig" d="M100 84 L120 98 L106 114"/><path class="fig" d="M100 50 L118 96"/><path class="fig hi" d="M100 48 Q104 14 80 20"/>'},
+{id:'cat-cow',name:'Cat–cow',kind:'stretch',area:['back','core'],equipment:'Mat',
+ primary:['Spine mobility (flexion and extension)'],secondary:['Abs','Spinal erectors'],m:['lowback','traps'],m2:['abs'],
+ summary:'On all fours, round the whole spine up (cat), then drop the belly and lift the gaze (cow), breathing with each.',
+ steps:['All fours, hands under shoulders, knees under hips.','Breathe out: round the spine up, tuck the chin and tailbone.','Breathe in: drop the belly, lift the chest and gaze.','Repeat slowly.'],
+ cue:'Move every segment, not just the neck.',mistake:'Rushing through the middle.',demo:'cat cow stretch',
+ fig:'<line class="floor" x1="6" y1="118" x2="64" y2="118"/><line class="floor" x1="76" y1="118" x2="134" y2="118"/><circle class="head" cx="16" cy="100" r="6"/><path class="fig hi" d="M54 88 Q38 64 24 88"/><path class="fig" d="M54 88 L56 118"/><path class="fig" d="M24 88 L20 118"/><path class="fig" d="M66 70 L74 70 M71 67 L74 70 L71 73" style="stroke-width:2"/><circle class="head" cx="84" cy="80" r="6"/><path class="fig hi" d="M122 88 Q108 106 92 88"/><path class="fig" d="M122 88 L124 118"/><path class="fig" d="M92 88 L88 118"/>'},
+{id:'soleus-wall-stretch',name:'Soleus wall stretch',kind:'stretch',area:['ankles'],equipment:'Wall',
+ primary:['Soleus (deep calf)'],secondary:['Achilles'],m:['calves'],m2:['feet'],
+ summary:'Hands on the wall, rear foot back, heel down, then bend the rear knee toward the wall.',
+ steps:['Hands on the wall, one foot back with the heel down.','Bend the rear knee, keeping the heel down.','Hold. Switch.'],
+ cue:'The bent knee is what hits the deep calf.',mistake:'Letting the heel lift.',
+ ski:'Boot flex happens with a bent knee — this is the calf range that matters most.',demo:'soleus stretch wall',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><line class="wall" x1="28" y1="14" x2="28" y2="120"/><circle class="head" cx="56" cy="30" r="8"/><path class="fig" d="M56 38 L64 78"/><path class="fig" d="M57 50 L30 48"/><path class="fig" d="M64 78 L54 100 L46 120"/><path class="fig" d="M64 78 L90 100"/><path class="fig hi" d="M90 100 L98 120"/><path class="fig" d="M98 120 L112 120"/>'},
+{id:'toe-sit',name:'Toe sit',kind:'stretch',area:['ankles'],equipment:'Mat',
+ primary:['Soles of the feet (plantar fascia)','Toe flexors'],secondary:['Calves'],m:['feet'],m2:['calves'],
+ summary:'Kneel with the toes tucked under and sit back on the heels.',
+ steps:['Kneel, tuck the toes under so they point forward.','Sit back onto the heels, hands on the thighs.','Hold; if the feet cramp, ease off and shake them out.'],
+ cue:'Sit tall; let the weight do the work.',mistake:'Forcing it through a cramp.',demo:'toe sit stretch feet',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="68" cy="30" r="8"/><path class="fig" d="M68 38 L72 90"/><path class="fig" d="M72 90 L102 118 L70 108"/><path class="fig hi" d="M70 108 L60 120"/><path class="fig" d="M69 52 L88 100"/>'},
+{id:'side-lying-quad-stretch',name:'Side-lying quad stretch',kind:'stretch',area:['legs','hips'],equipment:'Mat',
+ primary:['Quads','Hip flexors'],secondary:[],m:['quads','hipflex'],m2:[],
+ summary:'Lie on one side, grab the top ankle, pull the heel to the glute and drive the knee back behind you.',
+ steps:['Lie on one side, bottom knee bent for balance.','Hold the top ankle.','Pull the heel to the glute, then drive the knee back, pelvis tucked. Switch.'],
+ cue:'Knee back, not just heel in.',mistake:'Arching the low back.',
+ ski:'Quads are the ski muscle — give them length.',demo:'side lying quad stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="22" cy="110" r="8"/><path class="fig" d="M30 112 L78 110"/><path class="fig" d="M78 110 L106 114 L120 100"/><path class="fig hi" d="M78 110 L98 88"/><path class="fig" d="M98 88 L74 84"/><path class="fig" d="M36 108 L72 86"/>'},
+{id:'lizard-lunge',name:'Lizard lunge',kind:'stretch',area:['hips'],equipment:'Mat',
+ primary:['Hip flexors','Adductors','Glutes'],secondary:['Hamstrings'],m:['hipflex','adductors','glutes'],m2:['hamstrings'],
+ summary:'A low lunge with the front foot outside the hands and the hips sinking.',
+ steps:['Low lunge, front foot stepped out to the outside of the hands.','Rear knee down (or up for more).','Sink the hips; forearms toward the floor if possible. Switch.'],
+ cue:'Hips heavy, chest long.',mistake:'Front knee caving inward.',demo:'lizard pose stretch',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><path class="fig" d="M130 118 L108 118 L76 96"/><path class="fig hi" d="M76 96 L46 90"/><path class="fig" d="M46 90 L40 120 L26 120"/><path class="fig" d="M76 96 L48 74"/><circle class="head" cx="40" cy="66" r="8"/><path class="fig" d="M54 80 L60 112 L76 112"/>'},
+{id:'single-leg-balance',name:'Single-leg balance (eyes closed)',kind:'stretch',area:['ankles','hips'],equipment:'None',
+ primary:['Ankle stabilisers','Glute medius','Balance'],secondary:[],m:['calves','feet','glutes'],m2:[],
+ summary:'Stand on one foot with a soft knee and close the eyes. Touch down and reset if you wobble.',
+ steps:['Stand on one foot, knee soft.','Find the tripod of the foot (big toe, little toe, heel).','Close the eyes and hold. Switch.'],
+ cue:'Feel the foot working.',mistake:'Locking the knee.',
+ ski:'Balance resets fastest with the eyes closed — the mountain gives you flat light and bumps.',demo:'single leg balance eyes closed',
+ fig:'<line class="floor" x1="8" y1="120" x2="132" y2="120"/><circle class="head" cx="70" cy="30" r="8"/><path class="fig" d="M70 38 L70 86"/><path class="fig hi" d="M70 86 L72 120"/><path class="fig" d="M62 120 L84 120"/><path class="fig" d="M70 86 L50 96 L56 114"/><path class="fig" d="M70 50 L40 62"/><path class="fig" d="M70 50 L100 62"/>'}
+];
+const LIB_BY_ID=Object.fromEntries(LIBRARY.map(e=>[e.id,e]));
+const LIB_BY_NAME=Object.fromEntries(LIBRARY.map(e=>[e.name.toLowerCase(),e]));
+// plan exercise id → library id, for plans created before libId existed (filled in once on load)
+const LIB_MAP={'e-squat':'back-squat','e-rdl':'romanian-deadlift','e-bss':'bulgarian-split-squat','e-calf':'standing-calf-raise','e-knee-raise':'hanging-knee-raise','e-deadbug':'dead-bug','e-bench':'bench-press','e-sa-row':'single-arm-dumbbell-row','e-db-press':'seated-dumbbell-shoulder-press','e-pushdown':'tricep-pushdown','e-cable-crunch':'cable-crunch','e-side-plank':'side-plank','e-deadlift':'trap-bar-deadlift','e-lunge':'walking-lunge','e-leg-curl':'leg-curl','e-ab-wheel':'ab-wheel-rollout','e-russian-twist':'russian-twist','e-incline-db':'incline-dumbbell-press','e-chinup':'chin-up','e-sa-lateral':'single-arm-lateral-raise','e-db-curl':'dumbbell-curl','e-rev-crunch':'reverse-crunch','e-pallof':'pallof-press'};
+
+// Muscle map: one silhouette drawn twice (front, back). Regions by id; view says which silhouette they sit on.
+const MAP_BASE='<circle class="m" cx="35" cy="14" r="9"/><path class="m" d="M22 26 h26 l6 34 l-6 30 l-4 44 h-7 l-2-40 h-4 l-2 40 h-7 l-4-44 l-6-30z"/><path class="m" d="M22 28 l-8 40 h5 l6-30z M48 28 l8 40 h-5 l-6-30z"/>';
+const MAP_REGIONS={
+ chest:{v:'f',d:'M24 30 h22 v12 h-22z'},frontdelts:{v:'f',d:'M20 28 h6 v8 h-6z M44 28 h6 v8 h-6z'},biceps:{v:'f',d:'M18 36 l6 2 l-3 14 l-6-2z M52 36 l-6 2 l3 14 l6-2z'},
+ forearms:{v:'fb',d:'M15 52 l6 2 l-2 12 l-5 0z M55 52 l-6 2 l2 12 l5 0z'},abs:{v:'f',d:'M29 44 h12 v18 h-12z'},obliques:{v:'f',d:'M24 44 h5 v18 h-5z M41 44 h5 v18 h-5z'},
+ hipflex:{v:'f',d:'M28 62 h14 l-2 10 h-10z'},adductors:{v:'f',d:'M31 76 h3 l-1 20 h-2z M36 76 h3 l-1 20 h-2z'},quads:{v:'f',d:'M27 76 h6 l-1 28 h-4z M37 76 h6 l-1 28 h-4z'},
+ shins:{v:'f',d:'M28 108 h4 v22 h-3z M38 108 h4 v22 h-3z'},feet:{v:'fb',d:'M27 128 h6 v6 h-6z M37 128 h6 v6 h-6z'},
+ traps:{v:'b',d:'M26 28 h18 v10 h-18z'},reardelts:{v:'b',d:'M20 28 h6 v8 h-6z M44 28 h6 v8 h-6z'},lats:{v:'b',d:'M23 38 h8 l-2 22 h-6z M39 38 h8 l0 22 h-6z'},
+ lowback:{v:'b',d:'M30 50 h10 v12 h-10z'},triceps:{v:'b',d:'M18 36 l6 2 l-3 14 l-6-2z M52 36 l-6 2 l3 14 l6-2z'},glutes:{v:'b',d:'M26 62 h18 l-1 12 h-16z'},
+ hamstrings:{v:'b',d:'M27 76 h6 l-1 28 h-4z M37 76 h6 l-1 28 h-4z'},calves:{v:'b',d:'M28 106 h5 v22 h-4z M37 106 h5 v22 h-4z'}
+};
+
+// Five bedtime routines, 15 minutes each. seconds OR reps, never both; perSide doubles the time shown.
+const STRETCH_ROUTINES=[
+ {id:'sr-lower-1',name:'Monday · after Lower 1',workoutId:'w-lower-1',runDay:false,minutes:15,focus:'hips, quads, ankles',
+  items:[{libId:'deep-squat-hold',seconds:45,sets:2,note:'Heels down, elbows push the knees out'},{libId:'couch-stretch',seconds:60,perSide:true,note:'Squeeze the rear glute'},{libId:'half-kneeling-hip-flexor',seconds:60,perSide:true,note:'Tuck, don’t lean'},{libId:'ninety-ninety',seconds:45,perSide:true,note:'Sit tall, then 30s each side folding forward'},{libId:'kneeling-ankle-stretch',seconds:60,perSide:true,note:'Heel stays down'},{libId:'pigeon',seconds:75,perSide:true},{libId:'reclined-butterfly',seconds:90},{libId:'legs-up-the-wall',seconds:120,note:'4 in, 6 out'}]},
+ {id:'sr-upper-1',name:'Friday · after Upper 1',workoutId:'w-upper-1',runDay:false,minutes:15,focus:'chest, lats, thoracic, hips',
+  items:[{libId:'doorframe-pec-stretch',seconds:30,sets:3,perSide:true,note:'Three heights: low, shoulder, high'},{libId:'childs-pose',seconds:45,sets:2,note:'Walk the hands to each side (lat version)'},{libId:'thread-the-needle',reps:8,perSide:true,note:'Hold the last one for 30s'},{libId:'puppy-pose',seconds:60},{libId:'sphinx',seconds:60},{libId:'supine-overhead-reach',seconds:60},{libId:'half-kneeling-hip-flexor',seconds:60,perSide:true,note:'Every night, even upper days'},{libId:'supine-twist',seconds:60,perSide:true},{libId:'slow-breathing-lying',seconds:120}]},
+ {id:'sr-lower-2',name:'Saturday · after Lower 2',workoutId:'w-lower-2',runDay:false,minutes:15,focus:'hamstrings, adductors, calves, lateral hips',
+  items:[{libId:'seated-straddle-fold',seconds:45,sets:3,note:'Centre, then over each leg'},{libId:'frog',seconds:90},{libId:'cossack-hold',seconds:45,perSide:true},{libId:'lying-hamstring-stretch',seconds:60,perSide:true,note:'Knee soft, then straight, then foot flexed'},{libId:'downward-dog',seconds:60,note:'Pedal, then hold'},{libId:'seated-calf-wall-stretch',seconds:45,perSide:true},{libId:'lying-figure-4',seconds:60,perSide:true},{libId:'seated-side-bend',seconds:45,perSide:true},{libId:'happy-baby',seconds:120,note:'Rock and breathe'}]},
+ {id:'sr-upper-2',name:'Sunday · after Upper 2',workoutId:'w-upper-2',runDay:false,minutes:15,focus:'lats, biceps, rotation',
+  items:[{libId:'childs-pose',seconds:60,note:'Arms long'},{libId:'open-book',reps:8,perSide:true,note:'Slow'},{libId:'bicep-chest-wall-stretch',seconds:30,perSide:true},{libId:'side-lying-windmill',reps:8,perSide:true},{libId:'cat-cow',reps:10},{libId:'pigeon',seconds:75,perSide:true,note:'Folded forward'},{libId:'supine-twist',seconds:60,perSide:true},{libId:'reclined-butterfly',seconds:60},{libId:'legs-up-the-wall',seconds:120}]},
+ {id:'sr-run',name:'Run days · Tue/Wed/Thu',workoutId:null,runDay:true,minutes:15,focus:'calves, feet, hips, balance',
+  items:[{libId:'downward-dog',seconds:60,note:'Pedalling'},{libId:'soleus-wall-stretch',seconds:45,perSide:true},{libId:'kneeling-ankle-stretch',seconds:60,perSide:true},{libId:'toe-sit',seconds:60,note:'Then shake the feet out'},{libId:'side-lying-quad-stretch',seconds:45,perSide:true},{libId:'half-kneeling-hip-flexor',seconds:60,perSide:true},{libId:'lizard-lunge',seconds:60,perSide:true},{libId:'lying-figure-4',seconds:45,perSide:true},{libId:'single-leg-balance',seconds:30,perSide:true},{libId:'slow-breathing-lying',seconds:90}]}
+];
+const ROUTINE_SHORTCUT='Tired? First four plus the breathing — ten minutes.';
+
 const LS={plan:'nl_plan',state:'nl_state',sessions:'nl_sessions'};
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){console.warn(e);toast('Could not save — storage is full or blocked')}};
@@ -224,7 +652,7 @@ function initStore(){
   if(!S.plan){S.plan=clone(DEFAULT_PLAN);savePlan()}
   S.state=lsGet(LS.state,{cursor:0,activeSessionId:null});
   S.sessions=lsGet(LS.sessions,[]);
-  S.loaded={plan:true,state:true,sessions:true};render();
+  linkPlan();S.loaded={plan:true,state:true,sessions:true};render();
 }
 function exportBackup(){
   const data={app:'next-lift',exportedAt:new Date().toISOString(),plan:S.plan,state:S.state,sessions:S.sessions};
@@ -238,7 +666,7 @@ function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.
 function importBackup(file){
   const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.app!=='next-lift'||!d.plan)throw 0;
     const existing=S.sessions.map(s=>s.id);const added=(d.sessions||[]).filter(s=>!existing.includes(s.id));
-    S.sessions=S.sessions.concat(added);S.plan=d.plan;if(d.state)S.state=d.state;
+    S.sessions=S.sessions.concat(added);S.plan=d.plan;if(d.state)S.state=d.state;linkPlan();
     savePlan();saveState();saveSessions();S.edit=null;render();toast('Restored: '+added.length+' new session'+(added.length===1?'':'s')+' added')}
     catch{toast('That file is not a Fitness backup')}};
   r.readAsText(file);
@@ -310,12 +738,12 @@ function render(){
   const app=$('#app');
   if(!ready()){app.innerHTML=`<div class="empty"><h2>Loading your plan…</h2></div>`;renderTabs();return}
   if(S.view==='workout'&&!activeSession())S.view='today';
-  app.innerHTML=({today:viewToday,workout:viewWorkout,history:viewHistory,plan:viewPlan}[S.view]||viewToday)();
+  app.innerHTML=({today:viewToday,workout:viewWorkout,history:viewHistory,plan:viewPlan,library:viewLibrary}[S.view]||viewToday)();
   renderTabs();renderTimer();
 }
 function renderTabs(){
   const act=activeSession();
-  const tabs=[['today','Today','◎'],['workout','Workout','⚡'],['history','History','▤'],['plan','Plan','≡']];
+  const tabs=[['today','Today','◎'],['workout','Workout','⚡'],['history','History','▤'],['library','Library','▦'],['plan','Plan','≡']];
   $('#tabs').innerHTML=tabs.map(([k,l,i])=>`<button data-act="tab" data-v="${k}" class="${S.view===k?'on':''}" ${k==='workout'&&!act?'disabled':''}><span class="ico">${i}</span>${l}</button>`).join('');
 }
 
@@ -345,7 +773,7 @@ function viewToday(){
     </div>`;
   }
   if(!workouts().length){
-    out+=`<div class="card empty"><h2>No plan loaded yet</h2><p>Your gym workouts will appear here once a plan is in place. Head to <b>Plan</b> to build one, or restore a backup.</p><button class="btn primary" data-act="tab" data-v="plan">Open plan</button></div></div>`;return out;
+    out+=tonightHTML()+`<div class="card empty"><h2>No plan loaded yet</h2><p>Your gym workouts will appear here once a plan is in place. Head to <b>Plan</b> to build one, or restore a backup.</p><button class="btn primary" data-act="tab" data-v="plan">Open plan</button></div></div>`;return out;
   }
   if(dt.length){out+=`<div class="card soft"><div class="row between"><div><div class="eyebrow">Done today</div><h3>${h(dt.map(s=>s.name).join(', '))}</h3></div><span class="chip done">✓</span></div></div>`;}
   const last=w?lastDoneOf(w.id):null;
@@ -361,6 +789,7 @@ function viewToday(){
       <div class="grid2"><button class="btn good" data-act="complete-yes">Yes, done</button><button class="btn" data-act="not-yet">Not yet</button></div>
       <p class="muted" style="margin:8px 0 0;font-size:.9rem">It stays as your next session until you mark it done — skipping a day never skips the workout.</p></div>
   </div>`;
+  out+=tonightHTML();
   const ws=workouts();const n=ws.length;
   if(n>1){out+=`<div><div class="eyebrow" style="margin-bottom:8px">Coming up</div><div class="list">${[1,2,3].filter(i=>i<n).map(i=>{const x=ws[((S.state.cursor||0)+i)%n];const l=lastDoneOf(x.id);return `<div class="card soft row between"><div><b>${h(x.name)}</b> <span class="muted">${h(x.tag||'')}</span></div><span class="muted" style="font-size:.85rem">${l?fmtDate(l.completedAt):'—'}</span></div>`}).join('')}</div></div>`;}
   out+=`<button class="btn ghost block muted" data-act="skip">Skip ${h(w.name)} and move on</button></div>`;
@@ -377,13 +806,13 @@ function viewWorkout(){
     <div class="list">`;
   s.order.forEach((id,idx)=>{
     const e=s.ex[id];const def=exById(id)||{sets:e.sets.length,reps:'',perSide:false,rest:90,note:''};
-    const open=S.openEx===id;const last=lastSets(e.name,s.id);
+    const open=S.openEx===id;const last=lastSets(e.name,s.id);const lib=libFor({libId:def.libId,name:e.name});
     out+=`<div class="ex ${e.status} ${open?'open':''}">
-      <button class="ex-head" data-act="open-ex" data-v="${id}" aria-expanded="${open}">
+      <div class="ex-top"><button class="ex-head" data-act="open-ex" data-v="${id}" aria-expanded="${open}">
         <span class="idx num">${e.status==='done'?'✓':idx+1}</span>
         <span class="grow"><div style="font-weight:600">${h(e.name)}</div><div class="muted" style="font-size:.85rem">${def.sets}×${def.reps}${def.perSide?' per side':''} · rest ${def.rest>=120?def.rest/60+' min':def.rest+'s'}${last?' · last '+setsLine(last.sets):''}</div></span>
         ${e.status==='later'?'<span class="chip later">Later</span>':e.status==='done'?`<span class="chip done">${e.rpe?e.rpe+'/10':'Done'}</span>`:''}
-      </button>`;
+      </button>${infoBtn(lib)}</div>`;
     if(open){
       out+=`<div class="ex-body">
         ${def.note?`<div class="muted" style="font-size:.9rem">${h(def.note)}</div>`:''}
@@ -498,7 +927,7 @@ function viewPlan(){
     w.exercises.forEach((e,ei)=>{
       if(ed&&ed.type==='exercise'&&ed.wid===w.id&&ed.eid===e.id){out+=exForm(w,e);return}
       out+=`<div class="card soft row between" style="padding:10px 12px"><div class="grow"><div style="font-weight:600">${h(e.name)}</div><div class="muted" style="font-size:.85rem"><span class="num">${e.sets}×${e.reps}</span>${e.perSide?' per side':''} · start ${fmtW(e.weight)} · rest ${e.rest}s</div></div>
-        <div class="row" style="gap:2px"><button class="btn sm ghost" data-act="p-move-e" data-w="${w.id}" data-v="${e.id}" data-d="-1" ${ei===0?'disabled':''} aria-label="Move up">↑</button><button class="btn sm ghost" data-act="p-move-e" data-w="${w.id}" data-v="${e.id}" data-d="1" ${ei===w.exercises.length-1?'disabled':''} aria-label="Move down">↓</button><button class="btn sm ghost" data-act="p-edit-ex" data-w="${w.id}" data-v="${e.id}">Edit</button></div></div>`;
+        <div class="row" style="gap:2px">${infoBtn(libFor(e))}<button class="btn sm ghost" data-act="p-move-e" data-w="${w.id}" data-v="${e.id}" data-d="-1" ${ei===0?'disabled':''} aria-label="Move up">↑</button><button class="btn sm ghost" data-act="p-move-e" data-w="${w.id}" data-v="${e.id}" data-d="1" ${ei===w.exercises.length-1?'disabled':''} aria-label="Move down">↓</button><button class="btn sm ghost" data-act="p-edit-ex" data-w="${w.id}" data-v="${e.id}">Edit</button></div></div>`;
     });
     if(ed&&ed.type==='exercise'&&ed.wid===w.id&&!ed.eid)out+=exForm(w,null);
     out+=`</div><div class="row between"><button class="btn sm" data-act="p-add-ex" data-v="${w.id}">+ Exercise</button>${isNext?'':`<button class="btn sm ghost" data-act="p-set-next" data-v="${w.id}">Make this next</button>`}</div></div>`;
@@ -530,6 +959,84 @@ function exForm(w,e){
     ${e?`<button class="btn ghost danger sm" data-act="p-del-ex" data-w="${w.id}" data-v="${e.id}">Remove ${h(e.name)}</button>`:''}
   </div>`;
 }
+
+// ---------- library: lookups, drawings, cards, routines ----------
+const AREAS=[['legs','Legs'],['hips','Hips'],['back','Back'],['chest','Chest'],['shoulders','Shoulders'],['arms','Arms'],['core','Core'],['ankles','Ankles & feet']];
+const KINDS=[['lift','Lifts'],['core','Core'],['stretch','Stretches']];
+const areaLabel=a=>(AREAS.find(x=>x[0]===a)||[a,a])[1];
+const kindLabel=k=>({lift:'Lift',core:'Core',stretch:'Stretch'})[k]||k;
+// A plan exercise → its library entry: by libId first, then an exact (case-insensitive) name match, else nothing.
+const libFor=e=>e?((e.libId&&LIB_BY_ID[e.libId])||LIB_BY_NAME[(e.name||'').toLowerCase()]||null):null;
+// Fill libId on stored plan exercises that predate the library (ids from the original plan). Runs on load and after a restore.
+function linkPlan(){let changed=false;((S.plan&&S.plan.workouts)||[]).forEach(w=>(w.exercises||[]).forEach(e=>{if(!e.libId&&LIB_MAP[e.id]){e.libId=LIB_MAP[e.id];changed=true}}));if(changed)savePlan()}
+const routineById=id=>STRETCH_ROUTINES.find(r=>r.id===id)||null;
+const itemDose=i=>(i.seconds?i.seconds+'s':i.reps+' reps')+(i.sets>1?' × '+i.sets:'')+(i.perSide?' each side':'');
+function figSVG(e){return e.fig?`<svg class="fg" viewBox="0 0 140 140" aria-hidden="true">${e.fig}</svg>`:''}
+function mapViews(e){return ['f','b'].map(v=>{const regs=Object.entries(MAP_REGIONS).filter(([,r])=>r.v.includes(v));const sec=regs.filter(([id])=>e.m2.includes(id)).map(([,r])=>`<path class="r2" d="${r.d}"/>`).join('');const pri=regs.filter(([id])=>e.m.includes(id)).map(([,r])=>`<path class="r" d="${r.d}"/>`).join('');return `<svg viewBox="0 0 70 140" aria-hidden="true">${MAP_BASE}${sec}${pri}</svg>`})}
+function mapSVG(e,size){const [f,b]=mapViews(e);return `<div class="maps"><figure><div style="width:${size}px">${f}</div>Front</figure><figure><div style="width:${size}px">${b}</div>Back</figure></div>`}
+const thumbSVG=e=>e.fig?figSVG(e):`<div class="mm">${mapViews(e)[0]}</div>`;
+const infoBtn=lib=>lib?`<button class="info" data-act="lib-open" data-v="${lib.id}" aria-label="How to do ${h(lib.name)}">i</button>`:'';
+function appearsIn(lib){return {w:workouts().filter(w=>(w.exercises||[]).some(e=>libFor(e)===lib)),r:STRETCH_ROUTINES.filter(r=>r.items.some(i=>i.libId===lib.id))}}
+// Tonight's stretch: the routine for a gym session done today; else the run routine on run days (or after a logged run);
+// else the routine for the most recent workout. A "change" pick on Today overrides it for that day only.
+function tonightRoutine(){
+  const k=todayKey();const t=S.state&&S.state.tonight;if(t&&t.date===k&&routineById(t.id))return routineById(t.id);
+  const ds=doneSessions();const byWorkout=id=>STRETCH_ROUTINES.find(r=>r.workoutId===id);
+  const gymToday=ds.find(s=>s.kind!=='run'&&(s.completedAt||'').slice(0,10)===k);if(gymToday&&byWorkout(gymToday.workoutId))return byWorkout(gymToday.workoutId);
+  const runToday=ds.find(s=>s.kind==='run'&&(s.completedAt||'').slice(0,10)===k);if(runToday||runDays().includes(new Date().getDay()))return routineById('sr-run');
+  const lastGym=ds.find(s=>s.kind!=='run');if(lastGym&&byWorkout(lastGym.workoutId))return byWorkout(lastGym.workoutId);
+  return STRETCH_ROUTINES[0];
+}
+function tonightHTML(){const r=tonightRoutine();
+  return `<div class="card soft stack" style="gap:8px"><div class="row between"><div class="grow"><div class="eyebrow">Tonight’s stretch</div><h3>${h(r.name)}</h3><div class="muted" style="font-size:.85rem">${r.minutes} min · ${h(r.focus)} · <button class="linkish" data-act="tonight-change">${S.tonightPick?'close':'change'}</button></div></div><button class="btn sm" data-act="routine-open" data-v="${r.id}">Open</button></div>
+    ${S.tonightPick?`<div class="chips">${STRETCH_ROUTINES.map(x=>`<button data-act="tonight-set" data-v="${x.id}" class="${x.id===r.id?'on':''}">${h(x.name)}</button>`).join('')}</div>`:''}</div>`}
+
+// ----- Library tab -----
+function libFiltered(){const q=S.lib.q.trim().toLowerCase();return LIBRARY.filter(e=>(!S.lib.kinds.length||S.lib.kinds.includes(e.kind))&&(!S.lib.areas.length||e.area.some(a=>S.lib.areas.includes(a)))&&(!q||e.name.toLowerCase().includes(q)||e.primary.concat(e.secondary).some(t=>t.toLowerCase().includes(q)))).sort((a,b)=>a.name.localeCompare(b.name))}
+function libListHTML(){const L=libFiltered();if(!L.length)return `<div class="empty">Nothing matches that.</div>`;
+  return L.map(e=>`<button class="lib-row" data-act="lib-open" data-v="${e.id}"><div class="th">${thumbSVG(e)}</div><div class="grow"><div style="font-weight:600">${h(e.name)}</div><div class="tags" style="margin-top:3px"><span class="tag k">${kindLabel(e.kind)}</span>${e.primary.slice(0,2).map(t=>`<span class="tag">${h(t)}</span>`).join('')}</div></div><span class="muted">›</span></button>`).join('')}
+function viewLibrary(){
+  let out=`<div class="stack"><h1>Library</h1><div class="seg"><button data-act="lib-seg" data-v="ex" class="${S.lib.seg==='ex'?'on':''}">Exercises</button><button data-act="lib-seg" data-v="st" class="${S.lib.seg==='st'?'on':''}">Stretches</button></div>`;
+  if(S.lib.seg==='ex'){
+    out+=`<div class="field"><input id="lib-q" type="search" placeholder="Search by name or muscle" value="${h(S.lib.q)}" autocomplete="off"></div>
+      <div class="chips"><button data-act="lib-kind" data-v="" class="${S.lib.kinds.length?'':'on'}">All</button>${KINDS.map(([k,l])=>`<button data-act="lib-kind" data-v="${k}" class="${S.lib.kinds.includes(k)?'on':''}">${l}</button>`).join('')}</div>
+      <div class="chips">${AREAS.map(([a,l])=>`<button data-act="lib-area" data-v="${a}" class="${S.lib.areas.includes(a)?'on':''}">${l}</button>`).join('')}</div>
+      <div class="list" id="lib-list">${libListHTML()}</div>`;
+  }else{
+    out+=`<div class="muted" style="font-size:.9rem">Five 15-minute bedtime routines: one after each gym session, one for run days. Tap a routine for the list, then any movement for how to do it.</div>
+      <div class="list">${STRETCH_ROUTINES.map(r=>`<button class="lib-row" data-act="routine-open" data-v="${r.id}"><div class="grow"><div style="font-weight:600">${h(r.name)}</div><div class="muted" style="font-size:.85rem"><span class="num">${r.minutes} min</span> · ${r.items.length} movements · ${h(r.focus)}</div></div><span class="muted">›</span></button>`).join('')}</div>`;
+  }
+  return out+`</div>`;
+}
+
+// ----- overlay sheet: a card or a routine, stacked so a card opened from a routine returns to it -----
+function openSheet(x){S.sheet.push(x);renderSheet()}
+function closeSheet(){S.sheet.pop();renderSheet()}
+function renderSheet(){const el=$('#sheet');const top=S.sheet[S.sheet.length-1];
+  if(!top){el.hidden=true;el.innerHTML='';document.body.style.overflow='';return}
+  const e=top.t==='card'?LIB_BY_ID[top.id]:null,r=top.t==='routine'?routineById(top.id):null;
+  if(!e&&!r){S.sheet.pop();renderSheet();return}
+  el.hidden=false;document.body.style.overflow='hidden';el.innerHTML=`<div class="inner">${e?cardHTML(e):routineHTML(r)}</div>`;el.scrollTop=0}
+function cardHTML(e){const ap=appearsIn(e);
+  return `<div class="sheet-top"><button class="btn sm" data-act="sheet-back">‹ Back</button><div class="grow" style="min-width:0"><div class="eyebrow">${kindLabel(e.kind)} · ${e.area.map(areaLabel).join(', ')}</div><h2>${h(e.name)}</h2></div></div>
+  <div class="stack">
+    ${e.fig?`<div style="width:60%;max-width:240px;margin:0 auto">${figSVG(e)}</div>`:mapSVG(e,110)}
+    <p style="margin:0;font-size:1.05rem">${h(e.summary)}</p>
+    <div><div class="eyebrow" style="margin-bottom:6px">How to</div><ol class="steps">${e.steps.map(s=>`<li>${h(s)}</li>`).join('')}</ol></div>
+    <div class="card soft stack" style="gap:8px"><div><div class="eyebrow">Cue</div><div class="cue">${h(e.cue)}</div></div><div><div class="eyebrow">Common mistake</div><div>${h(e.mistake)}</div></div></div>
+    <div><div class="eyebrow" style="margin-bottom:6px">Targets</div><div class="tags">${e.primary.map(t=>`<span class="tag p">${h(t)}</span>`).join('')}${e.secondary.map(t=>`<span class="tag s">${h(t)}</span>`).join('')}</div>${e.fig?`<div style="margin-top:12px">${mapSVG(e,72)}</div>`:''}</div>
+    ${e.ski?`<div class="card soft"><div class="eyebrow">For skiing</div><div>${h(e.ski)}</div></div>`:''}
+    <div class="muted" style="font-size:.9rem">Equipment: ${h(e.equipment)}</div>
+    ${(ap.w.length||ap.r.length)?`<div><div class="eyebrow" style="margin-bottom:6px">Appears in</div><div class="chips">${ap.w.map(w=>`<span class="tag">${h(w.name)}</span>`).join('')}${ap.r.map(r=>`<button data-act="routine-open" data-v="${r.id}">${h(r.name)}</button>`).join('')}</div></div>`:''}
+    <a class="btn block" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.demo)}" target="_blank" rel="noopener">▶ Watch a demo <span class="muted" style="font-weight:400">(needs signal)</span></a>
+  </div>`}
+function routineHTML(r){
+  return `<div class="sheet-top"><button class="btn sm" data-act="sheet-back">‹ Back</button><div class="grow" style="min-width:0"><div class="eyebrow">Bedtime stretch · ${r.minutes} min · ${r.items.length} movements</div><h2>${h(r.name)}</h2></div></div>
+  <div class="stack">
+    <div class="muted">Focus: ${h(r.focus)}. Seconds are per side where it says each side.</div>
+    <div class="card soft" style="font-size:.9rem">${ROUTINE_SHORTCUT}</div>
+    <div class="list">${r.items.map((i,n)=>{const e=LIB_BY_ID[i.libId];return `<button class="lib-row" data-act="lib-open" data-v="${e.id}"><span class="idx num">${n+1}</span><div class="th">${thumbSVG(e)}</div><div class="grow"><div style="font-weight:600">${h(e.name)}</div><div class="muted" style="font-size:.85rem"><span class="num" style="color:var(--fg)">${itemDose(i)}</span>${i.note?' · '+h(i.note):''}</div></div></button>`}).join('')}</div>
+  </div>`}
 
 // ---------- events ----------
 document.addEventListener('click',ev=>{
@@ -578,6 +1085,15 @@ document.addEventListener('click',ev=>{
     case 't-plus':T.remaining=(T.running?(T.endAt-Date.now())/1000:T.remaining)+30;if(T.running)T.endAt=Date.now()+T.remaining*1000;T.fired=false;renderTimer();break;
     case 'h-open':S.histOpen=S.histOpen===v?null:v;render();break;
     case 'h-delete':if(b.dataset.sure){S.sessions=S.sessions.filter(x=>x.id!==v);persistDelete();S.histOpen=null;render();toast('Deleted')}else{b.dataset.sure='1';b.textContent='Tap again to delete';}break;
+    // library, cards, routines
+    case 'lib-seg':S.lib.seg=v;render();break;
+    case 'lib-kind':S.lib.kinds=v?(S.lib.kinds.includes(v)?S.lib.kinds.filter(x=>x!==v):S.lib.kinds.concat([v])):[];render();break;
+    case 'lib-area':S.lib.areas=S.lib.areas.includes(v)?S.lib.areas.filter(x=>x!==v):S.lib.areas.concat([v]);render();break;
+    case 'lib-open':openSheet({t:'card',id:v});break;
+    case 'routine-open':openSheet({t:'routine',id:v});break;
+    case 'sheet-back':closeSheet();break;
+    case 'tonight-change':S.tonightPick=!S.tonightPick;render();break;
+    case 'tonight-set':S.state.tonight={id:v,date:todayKey()};saveState();S.tonightPick=false;render();break;
     // plan
     case 'p-runday':{S.plan=S.plan||{workouts:[],runDays:[]};const d=Number(v);S.plan.runDays=runDays().includes(d)?runDays().filter(x=>x!==d):runDays().concat([d]).sort();savePlan();render();break}
     case 'backup':exportBackup();break;
@@ -606,6 +1122,7 @@ function readInputs(s){if(!s)return;document.querySelectorAll('#app input[data-f
 document.addEventListener('input',ev=>{const inp=ev.target;if(!inp.matches('#app input[data-f],#app textarea[data-f]'))return;const s=activeSession();if(!s)return;readInputs(s);saveSession(s)});
 // live average pace while typing a run
 document.addEventListener('input',ev=>{const m=/^(run|past)-(km|min|sec)$/.exec(ev.target.id);if(!m)return;const x=m[1];const p=$('#'+x+'-pace');if(!p)return;const km=parseFloat($('#'+x+'-km').value),mins=(parseFloat($('#'+x+'-min').value)||0)+(parseFloat($('#'+x+'-sec').value)||0)/60;p.textContent=fmtPace(km,mins)});
+document.addEventListener('input',ev=>{if(ev.target.id!=='lib-q')return;S.lib.q=ev.target.value;const l=$('#lib-list');if(l)l.innerHTML=libListHTML()});
 // switching the past-session form between a workout and a run re-renders it, keeping what's typed
 document.addEventListener('change',ev=>{if(ev.target.id!=='past-type')return;S.pastType=ev.target.value;S.pastDate=$('#past-date').value;S.pastNotes=$('#past-notes').value;render()});
 // re-render without losing anything typed into an open workout
