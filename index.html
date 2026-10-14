@@ -21,7 +21,7 @@ img{max-width:100%}
 :root{
   --bg:#15171b; --surface:#1e2127; --surface2:#272b33; --line:#353a45;
   --fg:#eef0f3; --muted:#9aa1ad; --accent:#f2a93b; --accent-fg:#1a1200;
-  --good:#5cc57a; --later:#7aa7e8; --bad:#e5645a;
+  --good:#5cc57a; --later:#7aa7e8; --bad:#e5645a; --other:#b58cf0;
   --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:dark;
@@ -30,13 +30,13 @@ img{max-width:100%}
   :root:not([data-theme="dark"]){
     --bg:#f3f1ec; --surface:#ffffff; --surface2:#ebe8e1; --line:#d9d5cc;
     --fg:#1b1d22; --muted:#666c78; --accent:#c9741a; --accent-fg:#ffffff;
-    --good:#2f9a52; --later:#3b6fc4; --bad:#c9453b; color-scheme:light;
+    --good:#2f9a52; --later:#3b6fc4; --bad:#c9453b; --other:#7c4fd0; color-scheme:light;
   }
 }
 :root[data-theme="light"]{
   --bg:#f3f1ec; --surface:#ffffff; --surface2:#ebe8e1; --line:#d9d5cc;
   --fg:#1b1d22; --muted:#666c78; --accent:#c9741a; --accent-fg:#ffffff;
-  --good:#2f9a52; --later:#3b6fc4; --bad:#c9453b; color-scheme:light;
+  --good:#2f9a52; --later:#3b6fc4; --bad:#c9453b; --other:#7c4fd0; color-scheme:light;
 }
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.4;-webkit-tap-highlight-color:transparent}
@@ -199,6 +199,8 @@ svg.fg{display:block;background:var(--bg);border-radius:10px;width:100%}
 .maps figure{margin:0;text-align:center;font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
 .maps svg{display:block;width:100%;background:var(--bg);border-radius:8px;margin-bottom:4px}
 .week .stretch .dot{background:var(--good);border-color:transparent}
+.week .act .dot{background:var(--other);border-color:transparent}
+.chip.act{background:var(--other);color:#fff;border-color:transparent}
 /* guided stretch routine */
 .guide-fig{width:50%;max-width:200px;margin:0 auto}
 .guide-fig .mm{width:70px;margin:0 auto}
@@ -236,7 +238,30 @@ const fmtRunTime=mins=>{const t=Math.round(Number(mins)*60);if(!isFinite(t)||t<=
 const fmtPace=(km,mins)=>{km=Number(km);mins=Number(mins);if(!(km>0)||!(mins>0))return '—';return mmss(mins*60/km).replace(/^0/,'')+' /km'};
 const fmtKm=km=>{km=Number(km);return (km%1?km.toFixed(2).replace(/0$/,''):String(km))+' km'};
 const runLine=s=>fmtKm(s.run.km)+' · '+fmtRunTime(s.run.mins)+' · '+fmtPace(s.run.km,s.run.mins);
-const VERSION='v7';
+// Activities: anything that isn't a plan workout. A run is one type and keeps its own distance/time record (kind 'run');
+// everything else is kind 'activity' with {type, name, mins}. None of them touch the gym queue.
+const ACT_TYPES=[['class','Class','classes','Spin, body pump…'],['swim','Swim','swims','Pool, open water…'],['run','Run','runs',''],['cycle','Cycle','cycles','Commute, turbo…'],['climb','Climb','climbs','Bouldering, lead…'],['hike','Hike','hikes','Where to?'],['ski','Ski','ski days','Resort, touring…'],['other','Other','other','What was it?']];
+const actType=t=>ACT_TYPES.find(a=>a[0]===t)||ACT_TYPES[ACT_TYPES.length-1];
+const actLabel=(t,n)=>actType(t)[n===1?1:2];
+const actLine=s=>[s.activity.name?h(s.activity.name):null,actLabel(s.activity.type,1),s.activity.mins?s.activity.mins+' min':null].filter(Boolean).join(' · ');
+// names used before for this type, most recent first, so a regular class is one tap next time
+const actNames=t=>{const seen=[];doneSessions().forEach(s=>{if(s.kind==='activity'&&s.activity&&s.activity.type===t&&s.activity.name&&!seen.includes(s.activity.name))seen.push(s.activity.name)});return seen.slice(0,6)};
+function typeChips(prefix,type){return `<div class="chips">${ACT_TYPES.map(([t,l])=>`<button data-act="${prefix}-type" data-v="${t}" class="${type===t?'on':''}">${l}</button>`).join('')}</div>`}
+function activityFields(prefix,type){
+  if(type==='run')return `<div class="grid3"><div class="field"><label for="${prefix}-km">Distance (km)</label><input id="${prefix}-km" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="${prefix}-min">Minutes</label><input id="${prefix}-min" type="number" min="0" inputmode="numeric" placeholder="28"></div><div class="field"><label for="${prefix}-sec">Seconds</label><input id="${prefix}-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="30"></div></div>
+    <div class="row between"><span class="eyebrow">Average pace</span><span class="num" id="${prefix}-pace" style="font-size:1.4rem">—</span></div>`;
+  const names=actNames(type);
+  return `<div class="grid2" style="grid-template-columns:2fr 1fr"><div class="field"><label for="${prefix}-aname">What was it?</label><input id="${prefix}-aname" placeholder="${h(actType(type)[3])}"></div><div class="field"><label for="${prefix}-amin">Minutes</label><input id="${prefix}-amin" type="number" min="0" inputmode="numeric" placeholder="45"></div></div>
+    ${names.length?`<div class="chips">${names.map(n=>`<button data-act="act-name" data-for="${prefix}-aname" data-v="${h(n)}">${h(n)}</button>`).join('')}</div>`:''}`;
+}
+// Build the session from a filled-in activity form; toasts and returns null when something's missing.
+function readActivity(prefix,type,when,feel,notes){
+  if(type==='run'){const km=parseFloat($('#'+prefix+'-km').value),mins=(parseFloat($('#'+prefix+'-min').value)||0)+(parseFloat($('#'+prefix+'-sec').value)||0)/60;if(!(km>0)||!(mins>0)){toast('Add distance and time first');return null}
+    return {id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:when,completedAt:when,status:'done',order:[],ex:{},feel,notes,run:{km,mins:Math.round(mins*1000)/1000}}}
+  const name=($('#'+prefix+'-aname').value||'').trim(),mins=parseInt($('#'+prefix+'-amin').value)||0;
+  if(!name&&type==='other'){toast('Say what it was');return null}
+  return {id:uid(),kind:'activity',workoutId:'activity',name:name||actLabel(type,1),startedAt:when,completedAt:when,status:'done',order:[],ex:{},feel,notes,activity:{type,name,mins}}}
+const VERSION='v8';
 // A chosen date (YYYY-MM-DD) as a timestamp: now if it's today, else midday on that day. Null if invalid or in the future.
 function dateAt(key){if(!/^\d{4}-\d{2}-\d{2}$/.test(key||'')||key>todayKey())return null;if(key===todayKey())return new Date().toISOString();const d=parseKey(key);d.setHours(12,0,0,0);return d.toISOString()}
 // Only show a workout duration when it's believable; an open session finished days later would otherwise show thousands of minutes.
@@ -246,11 +271,11 @@ const parseKey=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,
 const weekStart=(d=new Date())=>{d=new Date(d);d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));return d};
 const weekKey=d=>todayKey(weekStart(d));
 const dayIdx=d=>(new Date(d).getDay()+6)%7; // 0 = Monday
-function weekSummary(list){const runs=list.filter(s=>s.kind==='run'),st=list.filter(s=>s.kind==='stretch');return {n:list.length,gym:list.length-runs.length-st.length,runs:runs.length,stretch:st.length,km:runs.reduce((a,s)=>a+Number((s.run&&s.run.km)||0),0)}}
-const weekLine=w=>w.n?`${w.n} session${w.n===1?'':'s'}${w.gym?' · '+w.gym+' gym':''}${w.runs?' · '+w.runs+' run'+(w.runs===1?'':'s')+(w.km?' · '+fmtKm(w.km):''):''}${w.stretch?' · '+w.stretch+' stretch':''}`:'No sessions';
+function weekSummary(list){const runs=list.filter(s=>s.kind==='run'),st=list.filter(s=>s.kind==='stretch'),acts={};list.forEach(s=>{if(s.kind==='activity'){const t=(s.activity&&s.activity.type)||'other';acts[t]=(acts[t]||0)+1}});const na=Object.values(acts).reduce((a,b)=>a+b,0);return {n:list.length,gym:list.length-runs.length-st.length-na,runs:runs.length,stretch:st.length,acts,km:runs.reduce((a,s)=>a+Number((s.run&&s.run.km)||0),0)}}
+const weekLine=w=>w.n?`${w.n} session${w.n===1?'':'s'}${w.gym?' · '+w.gym+' gym':''}${w.runs?' · '+w.runs+' run'+(w.runs===1?'':'s')+(w.km?' · '+fmtKm(w.km):''):''}${Object.entries(w.acts).map(([t,n])=>' · '+n+' '+actLabel(t,n).toLowerCase()).join('')}${w.stretch?' · '+w.stretch+' stretch':''}`:'No sessions';
 function weekLabel(k){const cur=weekStart();if(k===todayKey(cur))return 'This week';const prev=new Date(cur);prev.setDate(prev.getDate()-7);if(k===todayKey(prev))return 'Last week';const d=parseKey(k);return 'Week of '+d.getDate()+' '+MONTHS[d.getMonth()].slice(0,3)}
-function weekDots(list,isCurrent){const days=Array.from({length:7},()=>({gym:0,run:0,stretch:0}));list.forEach(s=>{days[dayIdx(s.completedAt)][s.kind==='run'?'run':s.kind==='stretch'?'stretch':'gym']++});const today=isCurrent?dayIdx(new Date()):-1;
-  return `<div class="week" aria-hidden="true">${days.map((x,i)=>`<div class="d ${x.gym&&x.run?'both':x.gym?'gym':x.run?'run':x.stretch?'stretch':''}${i===today?' today':''}"><span class="dot"></span><span class="lbl">${DAYS_S[(i+1)%7]}</span></div>`).join('')}</div>`}
+function weekDots(list,isCurrent){const days=Array.from({length:7},()=>({gym:0,run:0,stretch:0,act:0}));list.forEach(s=>{days[dayIdx(s.completedAt)][s.kind==='run'?'run':s.kind==='stretch'?'stretch':s.kind==='activity'?'act':'gym']++});const today=isCurrent?dayIdx(new Date()):-1;
+  return `<div class="week" aria-hidden="true">${days.map((x,i)=>`<div class="d ${x.gym&&x.run?'both':x.gym?'gym':x.run?'run':x.act?'act':x.stretch?'stretch':''}${i===today?' today':''}"><span class="dot"></span><span class="lbl">${DAYS_S[(i+1)%7]}</span></div>`).join('')}</div>`}
 
 // ---------- state ----------
 const S={plan:null,state:null,sessions:[],loaded:{plan:false,state:false,sessions:false},view:'today',openEx:null,finishOpen:false,runOpen:false,histOpen:null,edit:null,online:navigator.onLine};
@@ -685,7 +710,7 @@ function nextWorkout(){const w=workouts();if(!w.length)return null;return w[((S.
 function activeSession(){return S.sessions.find(s=>s.id===S.state.activeSessionId&&s.status==='active')||null}
 const doneSessions=()=>S.sessions.filter(s=>s.status==='done').sort((a,b)=>(b.completedAt||'').localeCompare(a.completedAt||''));
 function lastSets(exName,excludeId){
-  for(const s of doneSessions()){if(s.id===excludeId||s.kind==='run')continue;
+  for(const s of doneSessions()){if(s.id===excludeId||s.kind!=='gym')continue;
     for(const id of Object.keys(s.ex||{})){const e=s.ex[id];if(e.name===exName){const sets=(e.sets||[]).filter(x=>x.done&&(x.w!==''||x.r!==''));if(sets.length)return {sets,rpe:e.rpe,date:s.completedAt}}}}
   return null;
 }
@@ -763,19 +788,20 @@ function viewToday(){
     const wk=weekKey(d);const list=doneSessions().filter(s=>weekKey(new Date(s.completedAt))===wk);
     out+=`<div class="card soft stack tap" data-act="tab" data-v="history" role="button" tabindex="0" style="gap:10px"><div class="row between"><div class="eyebrow">This week</div><span class="muted" style="font-size:.8rem">Open log ›</span></div>${weekDots(list,true)}<div class="muted" style="font-size:.9rem">${weekLine(weekSummary(list))}</div></div>`;
   }
-  // Runs can be logged any day; scheduled run days just get the reminder heading.
+  // Activities (a run, a class, a swim…) can be logged any day; scheduled run days just get the reminder heading.
   {
-    const runsToday=doneSessions().filter(s=>s.kind==='run'&&(s.completedAt||'').slice(0,10)===todayKey());
-    out+=`<div class="card soft"><div class="row between"><div><div class="eyebrow">${isRun?'Run day':'Running'}</div><h3>${isRun?'Run scheduled':'Log a run'}</h3>
-      ${runsToday.map(r=>`<div class="muted">Logged: <span class="num" style="color:var(--fg)">${runLine(r)}</span>${r.feel?' · felt '+r.feel+'/10':''}</div>`).join('')}</div>
-      ${runsToday.length&&!S.runOpen?'<span class="chip done">Done</span>':''}<button class="btn sm" data-act="run-toggle">${S.runOpen?'Close':(runsToday.length?'Log another':'Log run')}</button></div>
-      ${S.runOpen?`<div class="stack" style="margin-top:12px">
-      <div class="field"><label for="run-date">Date</label><input id="run-date" type="date" value="${todayKey()}" max="${todayKey()}"></div>
-      <div class="grid3"><div class="field"><label for="run-km">Distance (km)</label><input id="run-km" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="run-min">Minutes</label><input id="run-min" type="number" min="0" inputmode="numeric" placeholder="28"></div><div class="field"><label for="run-sec">Seconds</label><input id="run-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="30"></div></div>
-      <div class="row between"><span class="eyebrow">Average pace</span><span class="num" id="run-pace" style="font-size:1.4rem">—</span></div>
-      <div class="field"><label>How did it feel? 1 easy · 10 all out</label><div class="scale" id="run-scale">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-act="run-feel" data-v="${n}" class="${S.runFeel===n?'on':''}">${n}</button>`).join('')}</div></div>
-      <div class="field"><label for="run-notes">Notes</label><input id="run-notes" placeholder="Route, weather, how the legs felt"></div>
-      <button class="btn primary block" data-act="run-save">Save run</button></div>`:''}
+    const logged=doneSessions().filter(s=>(s.kind==='run'||s.kind==='activity')&&(s.completedAt||'').slice(0,10)===todayKey());
+    const type=S.actType||(isRun?'run':'class');
+    out+=`<div class="card soft"><div class="row between"><div><div class="eyebrow">${isRun?'Run day':'Activity'}</div><h3>${isRun?'Run scheduled':'Log an activity'}</h3>
+      ${logged.map(r=>`<div class="muted">Logged: <span class="num" style="color:var(--fg)">${r.kind==='run'?runLine(r):actLine(r)}</span>${r.feel?' · felt '+r.feel+'/10':''}</div>`).join('')}</div>
+      ${logged.length&&!S.actOpen?'<span class="chip done">Done</span>':''}<button class="btn sm" data-act="act-toggle">${S.actOpen?'Close':(logged.length?'Log another':'Log')}</button></div>
+      ${S.actOpen?`<div class="stack" style="margin-top:12px">
+      ${typeChips('act',type)}
+      <div class="field"><label for="act-date">Date</label><input id="act-date" type="date" value="${S.actDate||todayKey()}" max="${todayKey()}"></div>
+      ${activityFields('act',type)}
+      <div class="field"><label>How did it feel? 1 easy · 10 all out</label><div class="scale" id="act-scale">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-act="act-feel" data-v="${n}" class="${S.actFeel===n?'on':''}">${n}</button>`).join('')}</div></div>
+      <div class="field"><label for="act-notes">Notes</label><input id="act-notes" value="${h(S.actNotes||'')}" placeholder="${type==='run'?'Route, weather, how the legs felt':'Anything worth remembering'}"></div>
+      <button class="btn primary block" data-act="act-save">Save</button></div>`:''}
     </div>`;
   }
   if(!workouts().length){
@@ -899,9 +925,8 @@ function pastForm(){
   const ws=workouts();const type=S.pastType||(ws[0]?ws[0].id:'run');const today=todayKey();
   return `<div class="card soft stack">
     <div class="grid2"><div class="field"><label for="past-date">Date</label><input id="past-date" type="date" value="${S.pastDate||today}" max="${today}"></div>
-      <div class="field"><label for="past-type">What</label><select id="past-type">${ws.map(w=>`<option value="${w.id}" ${type===w.id?'selected':''}>${h(w.name)}</option>`).join('')}<option value="run" ${type==='run'?'selected':''}>Run</option></select></div></div>
-    ${type==='run'?`<div class="grid3"><div class="field"><label for="past-km">Distance (km)</label><input id="past-km" type="number" step="0.01" min="0" inputmode="decimal" placeholder="5.0"></div><div class="field"><label for="past-min">Minutes</label><input id="past-min" type="number" min="0" inputmode="numeric" placeholder="28"></div><div class="field"><label for="past-sec">Seconds</label><input id="past-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="30"></div></div>
-      <div class="row between"><span class="eyebrow">Average pace</span><span class="num" id="past-pace" style="font-size:1.4rem">—</span></div>`
+      <div class="field"><label for="past-type">What</label><select id="past-type">${ws.map(w=>`<option value="${w.id}" ${type===w.id?'selected':''}>${h(w.name)}</option>`).join('')}${ACT_TYPES.map(([t,l])=>`<option value="${t==='run'?'run':'act:'+t}" ${type===(t==='run'?'run':'act:'+t)?'selected':''}>${l}</option>`).join('')}</select></div></div>
+    ${type==='run'?activityFields('past','run'):type.startsWith('act:')?activityFields('past',type.slice(4))
       :`<div class="muted" style="font-size:.9rem">Recorded as done, without weights. It counts in your week and history but won't change the suggested weights in your next workout.</div>`}
     <div class="field"><label>How did it feel? 1 easy · 10 all out</label><div class="scale" id="past-scale">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button data-act="past-feel" data-v="${n}" class="${S.pastFeel===n?'on':''}">${n}</button>`).join('')}</div></div>
     <div class="field"><label for="past-notes">Notes</label><input id="past-notes" value="${h(S.pastNotes||'')}" placeholder="Anything worth remembering"></div>
@@ -912,8 +937,8 @@ function sessionItem(s){
     let out='';
     const open=S.histOpen===s.id;
     const dur=sessionMins(s);
-    out+=`<div class="ex ${open?'open':''}"><button class="ex-head" data-act="h-open" data-v="${s.id}"><span class="grow"><div style="font-weight:600">${h(s.name)}${s.kind==='run'?` · <span class="num">${runLine(s)}</span>`:''}</div><div class="muted" style="font-size:.85rem">${fmtDate(s.completedAt)} · ${fmtTime(s.completedAt)}${dur&&s.kind==='gym'?' · '+dur+' min':''}${s.feel?' · felt '+s.feel+'/10':''}</div></span>${s.kind==='gym'?`<span class="chip">${Object.values(s.ex).filter(e=>e.status==='done').length}/${s.order.length}</span>`:s.kind==='run'?'<span class="chip later">Run</span>':'<span class="chip done">Stretch</span>'}</button>`;
-    if(open){out+=`<div class="ex-body hist">${s.kind==='stretch'?`<div class="row between"><div class="muted">Bedtime routine · ${dur?dur+' min':''}</div>${routineById(s.routineId)?`<button class="btn sm" data-act="routine-open" data-v="${s.routineId}">Open routine</button>`:''}</div>`:s.kind==='run'?`<div class="row between"><div><div class="eyebrow">Distance</div><div class="sets-line">${fmtKm(s.run.km)}</div></div><div><div class="eyebrow">Time</div><div class="sets-line">${fmtRunTime(s.run.mins)}</div></div><div><div class="eyebrow">Avg pace</div><div class="sets-line">${fmtPace(s.run.km,s.run.mins)}</div></div></div>`:s.order.map(id=>{const e=s.ex[id];const sets=e.sets.filter(x=>x.done);return `<div class="row between"><div><div>${h(e.name)} ${e.status!=='done'?'<span class="chip">not done</span>':''}</div>${sets.length?`<div class="sets-line">${setsLine(sets)}</div>`:''}</div>${e.rpe?`<span class="chip done">${e.rpe}/10</span>`:''}</div>`}).join('')}${s.notes?`<div class="muted" style="font-size:.9rem">“${h(s.notes)}”</div>`:''}<button class="btn sm ghost danger" data-act="h-delete" data-v="${s.id}">Delete this entry</button></div>`}
+    out+=`<div class="ex ${open?'open':''}"><button class="ex-head" data-act="h-open" data-v="${s.id}"><span class="grow"><div style="font-weight:600">${s.kind==='activity'?actLine(s):h(s.name)}${s.kind==='run'?` · <span class="num">${runLine(s)}</span>`:''}</div><div class="muted" style="font-size:.85rem">${fmtDate(s.completedAt)} · ${fmtTime(s.completedAt)}${dur&&s.kind==='gym'?' · '+dur+' min':''}${s.feel?' · felt '+s.feel+'/10':''}</div></span>${s.kind==='gym'?`<span class="chip">${Object.values(s.ex).filter(e=>e.status==='done').length}/${s.order.length}</span>`:s.kind==='run'?'<span class="chip later">Run</span>':s.kind==='activity'?`<span class="chip act">${actLabel(s.activity.type,1)}</span>`:'<span class="chip done">Stretch</span>'}</button>`;
+    if(open){out+=`<div class="ex-body hist">${s.kind==='activity'?`<div class="muted">${actLabel(s.activity.type,1)}${s.activity.mins?' · '+s.activity.mins+' min':''}</div>`:s.kind==='stretch'?`<div class="row between"><div class="muted">Bedtime routine · ${dur?dur+' min':''}</div>${routineById(s.routineId)?`<button class="btn sm" data-act="routine-open" data-v="${s.routineId}">Open routine</button>`:''}</div>`:s.kind==='run'?`<div class="row between"><div><div class="eyebrow">Distance</div><div class="sets-line">${fmtKm(s.run.km)}</div></div><div><div class="eyebrow">Time</div><div class="sets-line">${fmtRunTime(s.run.mins)}</div></div><div><div class="eyebrow">Avg pace</div><div class="sets-line">${fmtPace(s.run.km,s.run.mins)}</div></div></div>`:s.order.map(id=>{const e=s.ex[id];const sets=e.sets.filter(x=>x.done);return `<div class="row between"><div><div>${h(e.name)} ${e.status!=='done'?'<span class="chip">not done</span>':''}</div>${sets.length?`<div class="sets-line">${setsLine(sets)}</div>`:''}</div>${e.rpe?`<span class="chip done">${e.rpe}/10</span>`:''}</div>`}).join('')}${s.notes?`<div class="muted" style="font-size:.9rem">“${h(s.notes)}”</div>`:''}<button class="btn sm ghost danger" data-act="h-delete" data-v="${s.id}">Delete this entry</button></div>`}
     out+=`</div>`;
     return out;
 }
@@ -1096,22 +1121,21 @@ document.addEventListener('click',ev=>{
     case 'complete-yes':if(s){S.view='workout';S.finishOpen=true;render()}else quickComplete();break;
     case 'not-yet':toast('No problem — it stays as your next workout.');break;
     case 'skip':skipWorkout();break;
-    case 'run-toggle':S.runOpen=!S.runOpen;render();break;
-    case 'run-feel':S.runFeel=Number(v);document.querySelectorAll('#run-scale button').forEach(x=>x.classList.toggle('on',Number(x.dataset.v)===S.runFeel));break;
+    case 'act-toggle':S.actOpen=!S.actOpen;if(!S.actOpen){S.actFeel=null;S.actType=null;S.actDate=null;S.actNotes=''}render();break;
+    case 'act-type':S.actType=v;S.actDate=$('#act-date').value;S.actNotes=$('#act-notes').value;render();break;
+    case 'act-feel':S.actFeel=Number(v);document.querySelectorAll('#act-scale button').forEach(x=>x.classList.toggle('on',Number(x.dataset.v)===S.actFeel));break;
+    case 'act-name':{const inp=$('#'+b.dataset.for);if(inp)inp.value=v;break}
     case 'past-open':S.pastOpen=!S.pastOpen;if(!S.pastOpen){S.pastFeel=null;S.pastType=null;S.pastDate=null;S.pastNotes=''}render();break;
     case 'past-feel':S.pastFeel=Number(v);document.querySelectorAll('#past-scale button').forEach(x=>x.classList.toggle('on',Number(x.dataset.v)===S.pastFeel));break;
     case 'past-save':{const when=dateAt($('#past-date').value);if(!when){toast('Pick a date that isn’t in the future');return}
       const type=$('#past-type').value,notes=($('#past-notes').value||'').trim();let s;
-      if(type==='run'){const km=parseFloat($('#past-km').value),mins=(parseFloat($('#past-min').value)||0)+(parseFloat($('#past-sec').value)||0)/60;if(!(km>0)||!(mins>0)){toast('Add distance and time first');return}
-        s={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:when,completedAt:when,status:'done',order:[],ex:{},feel:S.pastFeel||null,notes,run:{km,mins:Math.round(mins*1000)/1000}}}
+      if(type==='run'||type.startsWith('act:')){s=readActivity('past',type==='run'?'run':type.slice(4),when,S.pastFeel||null,notes);if(!s)return}
       else{const w=workouts().find(x=>x.id===type);if(!w){toast('Pick a workout');return}s=newSession(w);s.startedAt=when;s.completedAt=when;s.status='done';s.feel=S.pastFeel||null;s.notes=notes;
         Object.values(s.ex).forEach(e=>{e.status='done';e.sets.forEach(x=>{x.done=false})})}
       upsertLocal(s);saveSession(s);S.pastOpen=false;S.pastFeel=null;S.pastType=null;S.pastDate=null;S.pastNotes='';S.histOpen=s.id;render();toast(s.name+' logged for '+fmtDate(when));break}
-    case 'run-save':{const km=parseFloat($('#run-km').value),m=parseFloat($('#run-min').value)||0,sec=parseFloat($('#run-sec').value)||0;const mins=m+sec/60;
-      if(!(km>0)||!(mins>0)){toast('Add distance and time first');return}
-      const when=dateAt($('#run-date').value);if(!when){toast('Pick a date that isn’t in the future');return}
-      const r={id:uid(),kind:'run',workoutId:'run',name:'Run',startedAt:when,completedAt:when,status:'done',order:[],ex:{},feel:S.runFeel||null,notes:($('#run-notes').value||'').trim(),run:{km,mins:Math.round(mins*1000)/1000}};
-      upsertLocal(r);saveSession(r);S.runOpen=false;S.runFeel=null;render();toast('Run logged · '+fmtPace(km,mins));break}
+    case 'act-save':{const when=dateAt($('#act-date').value);if(!when){toast('Pick a date that isn’t in the future');return}
+      const type=S.actType||(runDays().includes(new Date().getDay())?'run':'class');const a=readActivity('act',type,when,S.actFeel||null,($('#act-notes').value||'').trim());if(!a)return;
+      upsertLocal(a);saveSession(a);S.actOpen=false;S.actFeel=null;S.actType=null;S.actDate=null;S.actNotes='';render();toast(a.kind==='run'?'Run logged · '+fmtPace(a.run.km,a.run.mins):a.name+' logged');break}
     case 'refresh':refreshApp();break;
     case 'open-ex':S.openEx=S.openEx===v?null:v;render();break;
     case 'set-done':{const e=ex(b.dataset.ex);if(!e)return;const i=Number(b.dataset.i);const st=e.sets[i];readInputs(s);st.done=!st.done;saveSession(s);if(st.done){const def=exById(b.dataset.ex);startTimer(def?def.rest:90)}render();break}
@@ -1175,7 +1199,7 @@ document.addEventListener('click',ev=>{
 function readInputs(s){if(!s)return;document.querySelectorAll('#app input[data-f]').forEach(inp=>{const e=s.ex[inp.dataset.ex];if(!e)return;const st=e.sets[Number(inp.dataset.i)];if(!st)return;st[inp.dataset.f]=inp.value===''?'':Number(inp.value)});const n=$('#notes');if(n)s.notes=n.value}
 document.addEventListener('input',ev=>{const inp=ev.target;if(!inp.matches('#app input[data-f],#app textarea[data-f]'))return;const s=activeSession();if(!s)return;readInputs(s);saveSession(s)});
 // live average pace while typing a run
-document.addEventListener('input',ev=>{const m=/^(run|past)-(km|min|sec)$/.exec(ev.target.id);if(!m)return;const x=m[1];const p=$('#'+x+'-pace');if(!p)return;const km=parseFloat($('#'+x+'-km').value),mins=(parseFloat($('#'+x+'-min').value)||0)+(parseFloat($('#'+x+'-sec').value)||0)/60;p.textContent=fmtPace(km,mins)});
+document.addEventListener('input',ev=>{const m=/^(act|past)-(km|min|sec)$/.exec(ev.target.id);if(!m)return;const x=m[1];const p=$('#'+x+'-pace');if(!p)return;const km=parseFloat($('#'+x+'-km').value),mins=(parseFloat($('#'+x+'-min').value)||0)+(parseFloat($('#'+x+'-sec').value)||0)/60;p.textContent=fmtPace(km,mins)});
 document.addEventListener('input',ev=>{if(ev.target.id!=='lib-q')return;S.lib.q=ev.target.value;const l=$('#lib-list');if(l)l.innerHTML=libListHTML()});
 // switching the past-session form between a workout and a run re-renders it, keeping what's typed
 document.addEventListener('change',ev=>{if(ev.target.id!=='past-type')return;S.pastType=ev.target.value;S.pastDate=$('#past-date').value;S.pastNotes=$('#past-notes').value;render()});
